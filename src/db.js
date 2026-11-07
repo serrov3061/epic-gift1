@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT);
 // миграции
 const itemCols = db.prepare('PRAGMA table_info(items)').all().map((c) => c.name);
 if (!itemCols.includes('lottie_file_id')) db.exec('ALTER TABLE items ADD COLUMN lottie_file_id TEXT');
+const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+if (!userCols.includes('wager_left')) db.exec('ALTER TABLE users ADD COLUMN wager_left INTEGER NOT NULL DEFAULT 0');
 
 export class AppError extends Error {
   constructor(msg, status = 400) { super(msg); this.status = status; }
@@ -63,7 +65,11 @@ export const kvSet = (k, v) => db.prepare('INSERT INTO kv(k,v) VALUES(?,?) ON CO
 
 export const getUser = (id) => db.prepare('SELECT * FROM users WHERE id=?').get(id);
 
+const safePhoto = (u) => (typeof u === 'string' && /^https:\/\/[^\s'"()<>\\]+$/.test(u) ? u : null);
+const safeName = (n) => (typeof n === 'string' ? n.replace(/[\u0000-\u001f\u200b-\u200f\u202a-\u202e]/g, '').slice(0, 64) : n);
+
 export function ensureUser({ id, first_name, username, photo_url }, refBy = null) {
+  photo_url = safePhoto(photo_url); first_name = safeName(first_name);
   const u = getUser(id);
   if (u) {
     if (first_name !== undefined) {
@@ -90,6 +96,12 @@ export function addBalance(userId, delta, type, meta) {
   if (!r.changes) throw new AppError('Недостаточно звёзд');
   logTx(userId, type, delta, meta);
 }
+
+/** Отыгрыш: пополнения/бонусы нужно прокрутить в ставках перед выводом (защита от отмыва и самореферальства). */
+export const addWagerReq = (userId, amount) =>
+  db.prepare('UPDATE users SET wager_left = wager_left + ? WHERE id=?').run(Math.max(0, Math.floor(amount * cfg.WAGER_MULT)), userId);
+export const consumeWager = (userId, amount) =>
+  db.prepare('UPDATE users SET wager_left = MAX(0, wager_left - ?) WHERE id=?').run(Math.max(0, Math.floor(amount)), userId);
 
 const priceStmt = db.prepare('SELECT value FROM prices WHERE collection = ? COLLATE NOCASE');
 export const itemValue = (it) => priceStmt.get(it.title)?.value ?? cfg.DEFAULT_NFT_PRICE;
@@ -129,11 +141,13 @@ export const creditDeposit = db.transaction((userId, amount, chargeId) => {
   if (!ins.changes) return false;
   ensureUser({ id: userId });
   addBalance(userId, amount, 'deposit', { chargeId });
+  addWagerReq(userId, amount);
   const u = getUser(userId);
   if (u.ref_by) {
     const bonus = Math.floor((amount * cfg.REF_PERCENT) / 100);
     if (bonus > 0) {
       addBalance(u.ref_by, bonus, 'ref_bonus', { from: userId });
+      addWagerReq(u.ref_by, bonus);
       db.prepare('UPDATE users SET ref_earned = ref_earned + ? WHERE id=?').run(bonus, u.ref_by);
     }
   }

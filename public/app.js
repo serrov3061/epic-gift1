@@ -306,6 +306,7 @@ function openWallet(tab = 'stars') {
       } else {
         body.innerHTML = `
           <p class="sub">Вывод звёзд на ваш аккаунт StaticGram · от ${fmt(S.cfg.minWithdraw)}</p>
+          ${S.me?.wagerLeft > 0 ? `<div class="wager-note">${ic('clock')}<div><b>Отыграйте ещё ${fmt(S.me.wagerLeft)} ⭐</b><small>Пополнения и бонусы нужно один раз прокрутить в ставках — так мы защищаемся от отмыва</small></div></div>` : ''}
           <label class="amount-input">${STAR}<input id="wOut" type="number" inputmode="numeric" value="${S.cfg.minWithdraw}"></label>
           <div class="quick"><button id="wMax">Весь баланс · ${fmt(S.me?.balance || 0)}</button></div>
           <button class="btn-main" id="wOutGo">${ic('out')}<span>Вывести</span><i class="shine"></i></button>
@@ -315,7 +316,7 @@ function openWallet(tab = 'stars') {
           const btn = e.currentTarget; btn.disabled = true;
           try {
             const r = await api('/api/withdraw', { amount: Number($('#wOut', body).value) });
-            setBalance(r.balance); haptic.ok(); island('Звёзды отправлены', 'ok', 'send'); closeSheet();
+            setBalance(r.balance); loadMe(); haptic.ok(); island('Звёзды отправлены', 'ok', 'send'); closeSheet();
           } catch (err) { fail(err); } finally { btn.disabled = false; }
         });
       }
@@ -714,14 +715,14 @@ function itemActions(it) {
     <div class="preview" style="background:${giftBg(it)}">${nftMedia(it, { anim: true })}</div>
     <h3>${esc(it.title)} ${it.number ? `<span class="grad-text">#${it.number}</span>` : ''}</h3>
     ${attrs.length ? `<div class="attrs">${attrs.map((a) => `<span>${a}</span>`).join('')}</div>` : ''}
-    <p class="sub">Оценка ${fmt(it.value)} звёзд</p>
+    <p class="sub">${it.value > 0 ? `Оценка ${fmt(it.value)} звёзд` : 'Оценивается — цену скоро установит админ'}</p>
     <div class="actions">
-      <button id="iaSell">${ic('sell')}Продать<small>${STAR}${fmt(sell)}</small></button>
+      ${sell > 0 ? `<button id="iaSell">${ic('sell')}Продать<small>${STAR}${fmt(sell)}</small></button>` : `<button disabled style="opacity:.5">${ic('clock')}Цена коллекции ещё не установлена</button>`}
       ${it.canTransfer ? `<button id="iaOut">${ic('out')}Вывести в StaticGram</button>` : ''}
     </div>
     <button class="btn-ghost" id="iaCancel">Закрыть</button>`, (s) => {
     $('#iaCancel', s).addEventListener('click', () => closeSheet());
-    $('#iaSell', s).addEventListener('click', async () => {
+    $('#iaSell', s)?.addEventListener('click', async () => {
       try { const r = await api(`/api/items/${it.id}/sell`, {}); haptic.ok(); setBalance(r.balance); island(`Продано за ${fmt(r.price)}`, 'ok', 'sell'); closeSheet(); loadMe(); } catch (e) { fail(e); }
     });
     $('#iaOut', s)?.addEventListener('click', async (e) => {

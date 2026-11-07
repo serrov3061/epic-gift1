@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { cfg } from './config.js';
-import { db, AppError, addBalance, itemValue, logTx, publicItem } from './db.js';
+import { db, AppError, addBalance, itemValue, logTx, publicItem, consumeWager } from './db.js';
 
 export const MULTIPLIERS = [1.5, 2, 3, 5, 10, 20];
 
@@ -21,6 +21,7 @@ export function doUpgrade(userId, { amount = 0, target }) {
   return db.transaction(() => {
     if (amount < cfg.MIN_BET) throw new AppError(`Минимальная ставка ${cfg.MIN_BET} ⭐`);
     addBalance(userId, -amount, 'upgrade_bet');
+    consumeWager(userId, amount);
     const inputValue = amount;
 
     let targetValue, targetItem = null;
@@ -28,6 +29,7 @@ export function doUpgrade(userId, { amount = 0, target }) {
       targetItem = db.prepare("SELECT * FROM items WHERE id=? AND owner_id IS NULL AND status='available'").get(Number(target.id));
       if (!targetItem) throw new AppError('Этот подарок уже забрали');
       targetValue = itemValue(targetItem);
+      if (!(targetValue > 0)) throw new AppError('Этот подарок ещё не оценён');
     } else if (target.type === 'mult' && MULTIPLIERS.includes(Number(target.mult))) {
       targetValue = Math.floor(inputValue * Number(target.mult));
     } else throw new AppError('Неверная цель');

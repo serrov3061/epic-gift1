@@ -13,7 +13,8 @@ export const cfg = {
   ADMIN_IDS: (process.env.ADMIN_IDS || '').split(',').map((s) => Number(s.trim())).filter(Boolean),
   PORT: num(process.env.PORT, 3000),
   DB_PATH: process.env.DB_PATH || './data/data.db',
-  DEV_MODE: process.env.DEV_MODE === '1',
+  // тестовый режим НЕВОЗМОЖЕН, если задан токен бота (защита от случайного включения на проде)
+  DEV_MODE: process.env.DEV_MODE === '1' && !(process.env.BOT_TOKEN || '').trim(),
 
   // Ракетка
   CRASH_EDGE: num(process.env.CRASH_EDGE, 0.10), // преимущество казино 10%
@@ -29,7 +30,10 @@ export const cfg = {
   UPGRADE_MAX_CHANCE: num(process.env.UPGRADE_MAX_CHANCE, 0.75),
 
   // Экономика
-  DEFAULT_NFT_PRICE: num(process.env.DEFAULT_NFT_PRICE, 500),
+  // 0 = коллекция без цены не продаётся и не участвует в апгрейде, пока админ не задаст /setprice
+  DEFAULT_NFT_PRICE: num(process.env.DEFAULT_NFT_PRICE, 0),
+  WAGER_MULT: num(process.env.WAGER_MULT, 1), // сколько раз нужно прокрутить пополнение/бонус до вывода
+  RATE_LIMIT_PER_SEC: num(process.env.RATE_LIMIT_PER_SEC, 6),
   SELL_RATE: num(process.env.SELL_RATE, 0.9),
   REF_PERCENT: num(process.env.REF_PERCENT, 10),
   MIN_DEPOSIT: num(process.env.MIN_DEPOSIT, 1),

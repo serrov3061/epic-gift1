@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { cfg } from './config.js';
-import { db, AppError, addBalance, getUser, logTx } from './db.js';
+import { db, AppError, addBalance, getUser, logTx, consumeWager } from './db.js';
 
 // Рост множителя: m(t) = e^(K·t), t в мс. 10 с ≈ 1.82x, 30 с ≈ 6.05x
 export const K = 0.00006;
@@ -81,6 +81,7 @@ export class CrashGame extends EventEmitter {
     if (amount > cfg.MAX_BET) throw new AppError(`Максимальная ставка ${cfg.MAX_BET} ⭐`);
     const bet = db.transaction(() => {
       addBalance(userId, -amount, 'crash_bet', { round: this.roundId });
+      consumeWager(userId, amount);
       logTx(userId, 'wager', amount, { game: 'crash', round: this.roundId });
       return { value: amount, auto, cashout: null, payout: 0 };
     })();

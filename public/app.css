@@ -511,3 +511,8 @@ input[type=number] { -moz-appearance: textfield; }
 @keyframes sheetDown { from { transform: translate(-50%, 0); } to { transform: translate(-50%, 100%); } }
 .land { max-width: 560px; margin: 0 auto; }
 @media (min-width: 560px) { #app { border-left: 1px solid var(--stroke); border-right: 1px solid var(--stroke); } }
+
+.wager-note { display: flex; gap: 12px; align-items: center; padding: 12px 14px; margin: -4px 0 14px; border-radius: 16px; background: rgba(255,197,61,.08); border: 1px solid rgba(255,197,61,.3); }
+.wager-note .ic { width: 22px; height: 22px; color: #fde68a; }
+.wager-note b { display: block; font-size: 14.5px; color: #fde68a; }
+.wager-note small { display: block; font-size: 12.5px; color: var(--t2); margin-top: 2px; line-height: 1.35; }

@@ -1,6 +1,6 @@
 import { Bot, InlineKeyboard } from 'grammy';
 import { cfg } from './config.js';
-import { db, kvGet, kvSet, ensureUser, creditDeposit, getUser, addBalance, AppError } from './db.js';
+import { db, kvGet, kvSet, ensureUser, creditDeposit, getUser, addBalance, addWagerReq, itemValue, AppError } from './db.js';
 import { refFromParam } from './auth.js';
 
 export const bot = cfg.BOT_TOKEN ? new Bot(cfg.BOT_TOKEN, { client: { apiRoot: cfg.API_ROOT } }) : null;
@@ -45,6 +45,14 @@ export async function createDepositLink(userId, amount) {
 
 // ───────────── Вывод звёзд (расширение StaticGram withdrawStarBalance) ─────────────
 export async function withdrawStars(userId, amount) {
+  const u = getUser(userId);
+  if (u?.wager_left > 0) throw new AppError(`Сначала отыграйте ещё ${u.wager_left} ⭐ в ставках — так защищаемся от отмыва`);
+  if (pendingWithdraw.has(userId)) throw new AppError('Предыдущий вывод ещё обрабатывается');
+  pendingWithdraw.add(userId);
+  try { return await doWithdraw(userId, amount); } finally { pendingWithdraw.delete(userId); }
+}
+const pendingWithdraw = new Set();
+async function doWithdraw(userId, amount) {
   const txId = db.transaction(() => {
     addBalance(userId, -amount, 'withdraw', { status: 'pending' });
     return db.prepare('SELECT last_insert_rowid() id').get().id;
@@ -99,6 +107,7 @@ function importGift(g) {
 }
 
 let syncing = false;
+const unpricedWarned = new Set();
 export async function syncGifts() {
   const bc = businessConnectionId();
   if (!bot || !bc || syncing) return;
@@ -110,6 +119,10 @@ export async function syncGifts() {
       for (const g of res.gifts || []) {
         if (g.type !== 'unique') continue;
         const r = importGift(g);
+        if (g.gift?.base_name && !(itemValue({ title: g.gift.base_name }) > 0) && !unpricedWarned.has(g.gift.base_name)) {
+          unpricedWarned.add(g.gift.base_name);
+          for (const a of cfg.ADMIN_IDS) bot.api.sendMessage(a, `⚠️ Пришёл NFT из коллекции «${g.gift.base_name}» без цены. Пока цены нет, его нельзя продать и выиграть.\nЗадай: /setprice ${g.gift.base_name} 1000`).catch(() => {});
+        }
         if (r) {
           hooks.onInventory(r.ownerId);
           bot.api.sendMessage(r.ownerId, `🎁 ${r.title} зачислен в инвентарь Epic Gift`, { reply_markup: appButton('Открыть') })
@@ -208,14 +221,14 @@ export function startBot() {
     if (!isAdmin(ctx.from.id)) return;
     const used = db.prepare("SELECT title, COUNT(*) c FROM items WHERE status='available' GROUP BY title").all();
     const prices = Object.fromEntries(db.prepare('SELECT * FROM prices').all().map((p) => [p.collection.toLowerCase(), p.value]));
-    ctx.reply(used.map((u) => `${u.title} ×${u.c}: ${prices[u.title.toLowerCase()] ?? `${cfg.DEFAULT_NFT_PRICE} (по умолч.)`} ⭐`).join('\n') || 'Подарков пока нет');
+    ctx.reply(used.map((u) => `${u.title} ×${u.c}: ${prices[u.title.toLowerCase()] ?? '❗️ нет цены'}${prices[u.title.toLowerCase()] ? ' ⭐' : ''}`).join('\n') || 'Подарков пока нет');
   });
   bot.command('addbalance', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return;
     const [id, amount] = ctx.match.split(/\s+/).map(Number);
     if (!id || !amount) return ctx.reply('Формат: /addbalance <user_id> <сумма>');
     ensureUser({ id });
-    db.transaction(() => addBalance(id, amount, 'admin', { by: ctx.from.id }))();
+    db.transaction(() => { addBalance(id, amount, 'admin', { by: ctx.from.id }); if (amount > 0) addWagerReq(id, amount); })();
     hooks.onBalance(id);
     ctx.reply(`Готово, баланс ${id}: ${getUser(id).balance} ⭐`);
   });

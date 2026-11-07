@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 import { cfg } from './config.js';
 import {
-  db, AppError, ensureUser, getUser, userItems, houseItems, publicItem, itemValue, addBalance,
+  db, AppError, ensureUser, getUser, userItems, houseItems, publicItem, itemValue, addBalance, addWagerReq,
 } from './db.js';
 import { parseInitData, refFromParam } from './auth.js';
 import { CrashGame } from './crash.js';
@@ -26,8 +26,17 @@ function authUser(initData) {
   const { user, startParam } = parseInitData(initData);
   return ensureUser(user, refFromParam(startParam));
 }
+// лимит запросов на пользователя (защита от спама/ботов)
+const hits = new Map();
+setInterval(() => hits.clear(), 60_000);
 const auth = (req, res, next) => {
-  try { req.user = authUser(req.get('x-init-data')); next(); } catch (e) { res.status(401).json({ error: e.message }); }
+  try { req.user = authUser(req.get('x-init-data')); } catch (e) { return res.status(401).json({ error: e.message }); }
+  if (req.method === 'POST') {
+    const sec = Math.floor(Date.now() / 1000), k = `${req.user.id}:${sec}`;
+    const n = (hits.get(k) || 0) + 1; hits.set(k, n);
+    if (n > cfg.RATE_LIMIT_PER_SEC) return res.status(429).json({ error: 'Слишком часто, подождите секунду' });
+  }
+  next();
 };
 const h = (fn) => async (req, res) => {
   try { res.json(await fn(req)); } catch (e) {
@@ -97,15 +106,15 @@ app.get('/api/me', auth, h((req) => {
   const u = req.user;
   const refs = db.prepare('SELECT COUNT(*) c FROM users WHERE ref_by=?').get(u.id).c;
   return {
-    user: { id: u.id, name: u.first_name, username: u.username, photo: u.photo_url, balance: u.balance, refEarned: u.ref_earned, refs },
+    user: { id: u.id, name: u.first_name, username: u.username, photo: u.photo_url, balance: u.balance, refEarned: u.ref_earned, refs, wagerLeft: u.wager_left },
     items: userItems(u.id).map(publicItem),
     refLink: refLink(u.id),
   };
 }));
 
 // витрина для лендинга (без авторизации)
-app.get('/api/showcase', h(() => houseItems().map(publicItem).sort((a, b) => b.value - a.value).slice(0, 8)));
-app.get('/api/shop', auth, h(() => houseItems().map(publicItem).sort((a, b) => a.value - b.value)));
+app.get('/api/showcase', h(() => houseItems().map(publicItem).filter((i) => i.value > 0).sort((a, b) => b.value - a.value).slice(0, 8)));
+app.get('/api/shop', auth, h(() => houseItems().map(publicItem).filter((i) => i.value > 0).sort((a, b) => a.value - b.value)));
 app.get('/api/live', auth, h(() => live));
 
 app.post('/api/deposit', auth, h(async (req) => {
@@ -129,8 +138,10 @@ app.post('/api/items/:id/sell', auth, h((req) => {
     const it = db.prepare("SELECT * FROM items WHERE id=? AND owner_id=? AND status='available'").get(Number(req.params.id), uid);
     if (!it) throw new AppError('Подарок не найден');
     const price = Math.floor(itemValue(it) * cfg.SELL_RATE);
+    if (!(price > 0)) throw new AppError('Цена этой коллекции ещё не установлена — попробуйте позже');
     db.prepare('UPDATE items SET owner_id=NULL WHERE id=?').run(it.id);
     addBalance(uid, price, 'sell', { item: it.id });
+    addWagerReq(uid, price);
     return { price };
   })();
   return { ...res, balance: getUser(uid).balance };
@@ -214,7 +225,7 @@ app.get('/lottie/:id', async (req, res) => {
 // ───────────── DEV: тестовые данные ─────────────
 if (cfg.DEV_MODE) {
   app.post('/api/dev/faucet', auth, h((req) => {
-    db.transaction(() => addBalance(req.user.id, 1000, 'dev'))();
+    db.transaction(() => { addBalance(req.user.id, 1000, 'dev'); addWagerReq(req.user.id, 1000); })();
     pushBalance(req.user.id);
     return { balance: getUser(req.user.id).balance };
   }));
