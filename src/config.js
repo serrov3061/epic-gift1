@@ -3,9 +3,9 @@ import 'dotenv/config';
 const num = (v, d) => (v === undefined || v === '' ? d : Number(v));
 
 export const cfg = {
-  BOT_TOKEN: (process.env.BOT_TOKEN || '').trim(),
+  BOT_TOKEN: (process.env.BOT_TOKEN || '').trim().replace(/^['"]|['"]$/g, ''),
   API_ROOT: (process.env.API_ROOT || 'https://api.staticgram.top').replace(/\/$/, ''),
-  WEBAPP_URL: (process.env.WEBAPP_URL || '').trim().replace(/\/+$/, ''),
+  WEBAPP_URL: (process.env.WEBAPP_URL || '').trim().replace(/^['"]|['"]$/g, '').trim().replace(/\/+$/, ''),
   BOT_USERNAME: (process.env.BOT_USERNAME || '').replace('@', ''),
   APP_SHORT_NAME: process.env.APP_SHORT_NAME || '',
   RELAYER_USERNAME: (process.env.RELAYER_USERNAME || '').replace('@', ''),

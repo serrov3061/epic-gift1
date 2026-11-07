@@ -139,12 +139,18 @@ export function startBot() {
       bot.api.setChatMenuButton({ chat_id: ctx.chat.id, menu_button: { type: 'web_app', text: 'Играть', web_app: { url: cfg.WEBAPP_URL } } })
         .catch((e) => console.error('[bot] menu (chat):', e.message));
     }
-    try {
-      await ctx.reply(text, { parse_mode: 'HTML', reply_markup: appButton() });
-    } catch (e) {
-      console.error('[bot] web_app button:', e.message);
-      // запасной вариант — обычная ссылка
-      await ctx.reply(`${text}\n\n👉 ${cfg.WEBAPP_URL}`, { parse_mode: 'HTML', reply_markup: new InlineKeyboard().url('🎁 Играть', cfg.WEBAPP_URL) });
+    // web_app-кнопка → обычная ссылка-кнопка → просто текст (бот ответит в любом случае)
+    const variants = [
+      { reply_markup: appButton() },
+      { reply_markup: new InlineKeyboard().url('🎁 Играть', cfg.WEBAPP_URL) },
+      {},
+    ];
+    for (const [i, extra] of variants.entries()) {
+      try {
+        await ctx.reply(i ? `${text}\n\n👉 ${cfg.WEBAPP_URL || 'WEBAPP_URL не задан'}` : text, { parse_mode: 'HTML', ...extra });
+        if (i) console.error(`[bot] /start отправлен запасным вариантом №${i}: StaticGram не принимает WEBAPP_URL=${JSON.stringify(cfg.WEBAPP_URL)}`);
+        break;
+      } catch (e) { console.error(`[bot] /start вариант ${i}:`, e.message); }
     }
   });
 
@@ -210,7 +216,8 @@ export function startBot() {
   bot.command('sync', async (ctx) => { if (isAdmin(ctx.from.id)) { await syncGifts(); ctx.reply('Синхронизировано'); } });
 
   bot.catch((e) => console.error('[bot]', e.message));
-  if (!cfg.WEBAPP_URL.startsWith('https://')) console.error('[bot] WEBAPP_URL должен начинаться с https:// — сейчас:', JSON.stringify(cfg.WEBAPP_URL));
+  console.log('[bot] WEBAPP_URL =', JSON.stringify(cfg.WEBAPP_URL));
+  if (!/^https:\/\/[^\s/]+\.[^\s/]+/.test(cfg.WEBAPP_URL)) console.error('[bot] WEBAPP_URL должен начинаться с https:// — сейчас:', JSON.stringify(cfg.WEBAPP_URL));
 
   const run = async () => {
     try {
