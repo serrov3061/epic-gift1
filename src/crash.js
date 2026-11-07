@@ -13,9 +13,7 @@ export function crashFromSeed(seed) {
   const h = crypto.createHmac('sha256', seed).update('epic-gift-rocket').digest('hex');
   const r = parseInt(h.slice(0, 13), 16) / 2 ** 52;
   const c = Math.floor((100 * (1 - cfg.CRASH_EDGE)) / (1 - r)) / 100;
-  // Взрывы ниже CRASH_MIN поднимаются ровно до CRASH_MIN. Забрать выигрыш можно только при m > CRASH_MIN,
-  // поэтому для любой цели x > CRASH_MIN шанс P(краш > x) не меняется — преимущество казино сохраняется.
-  return Math.min(cfg.CRASH_MAX, Math.max(cfg.CRASH_MIN, c));
+  return Math.min(cfg.CRASH_MAX, Math.max(1, c));
 }
 
 export class CrashGame extends EventEmitter {
@@ -77,8 +75,7 @@ export class CrashGame extends EventEmitter {
     if (!/^\d{1,9}$/.test(String(amount ?? ''))) throw new AppError('Неверная сумма');
     amount = Number(amount);
     auto = auto ? Math.floor(Number(auto) * 100) / 100 : null;
-    const autoMin = Math.round((cfg.CRASH_MIN + 0.01) * 100) / 100;
-    if (auto !== null && (!(auto >= autoMin) || auto > cfg.CRASH_MAX)) throw new AppError(`Автовывод от ${autoMin.toFixed(2)}x до ${cfg.CRASH_MAX}x`);
+    if (auto !== null && (!(auto >= 1.01) || auto > cfg.CRASH_MAX)) throw new AppError(`Автовывод от 1.01x до ${cfg.CRASH_MAX}x`);
 
     if (amount < cfg.MIN_BET) throw new AppError(`Минимальная ставка ${cfg.MIN_BET} ⭐`);
     if (amount > cfg.MAX_BET) throw new AppError(`Максимальная ставка ${cfg.MAX_BET} ⭐`);
@@ -104,7 +101,6 @@ export class CrashGame extends EventEmitter {
     if (!b || b.cashout) throw new AppError('Нет активной ставки');
     const m = multAt(Date.now() - this.startAt);
     if (m >= this.crash) throw new AppError('Ракета уже улетела');
-    if (m <= cfg.CRASH_MIN) throw new AppError(`Забрать можно после ${cfg.CRASH_MIN.toFixed(2)}x`);
     return this.payout(userId, m);
   }
 
@@ -130,7 +126,6 @@ export class CrashGame extends EventEmitter {
       hash: this.hash,
       betEndsAt: this.betEndsAt,
       betMs: cfg.BET_PHASE_MS,
-      crashMin: cfg.CRASH_MIN,
       startAt: this.startAt,
       crash: this.phase === 'crashed' ? this.crash : null,
       seed: this.phase === 'crashed' ? this.seed : null,

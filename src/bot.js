@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard, InputFile } from 'grammy';
+import { Bot, InlineKeyboard } from 'grammy';
 import { cfg } from './config.js';
 import { db, kvGet, kvSet, ensureUser, creditDeposit, getUser, addBalance, addWagerReq, itemValue, AppError } from './db.js';
 import { refFromParam } from './auth.js';
@@ -336,64 +336,6 @@ export function startBot() {
         { reply_markup: new InlineKeyboard().text('✅ Одобрить', `wd:ok:${w.id}`).text('❌ Отклонить', `wd:no:${w.id}`) });
     }
   });
-  // ── /logs @username — полная история игрока ──
-  bot.command('logs', async (ctx) => {
-    if (!isAdmin(ctx.from.id)) return;
-    const q = ctx.match.trim().replace('@', '');
-    if (!q) return ctx.reply('Формат: /logs @username или /logs 123456789');
-    const u = Number(q) ? getUser(Number(q)) : db.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE').get(q);
-    if (!u) return ctx.reply(`Игрок ${q} не найден в базе (не открывал бота/игру).`);
-    const tz = cfg.LOG_TZ;
-    const dt = (t) => new Date(t).toLocaleString('ru-RU', { timeZone: tz, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const sum = (type) => db.prepare('SELECT COALESCE(SUM(amount),0) s, COUNT(*) c FROM tx WHERE user_id=? AND type=?').get(u.id, type);
-    const dep = db.prepare('SELECT COALESCE(SUM(amount),0) s, COUNT(*) c FROM payments WHERE user_id=?').get(u.id);
-    const wd = db.prepare("SELECT COALESCE(SUM(CASE WHEN status='done' THEN amount END),0) done, COALESCE(SUM(CASE WHEN status IN ('pending','queued','processing') THEN amount END),0) wait, COUNT(*) c FROM withdrawals WHERE user_id=?").get(u.id);
-    const cb = sum('crash_bet'), cw = sum('crash_win'), ub = sum('upgrade_bet'), uw = sum('upgrade_win');
-    const sell = sum('sell'), ref = sum('ref_bonus'), adm = sum('admin');
-    const refs = db.prepare('SELECT COUNT(*) c FROM users WHERE ref_by=?').get(u.id).c;
-    const items = db.prepare("SELECT COUNT(*) c FROM items WHERE owner_id=? AND status='available'").get(u.id).c;
-    const crashProfit = cw.s + cb.s, upProfit = uw.s + ub.s; // ставки хранятся с минусом
-    const inflow = dep.s + ref.s + adm.s + sell.s, outflow = wd.done + wd.wait;
-    const flags = [];
-    if (outflow > dep.s) flags.push(`⚠️ вывел/выводит больше, чем пополнил (+${outflow - dep.s} ⭐)`);
-    if (adm.s > 0) flags.push(`ℹ️ получал звёзды от админа: ${adm.s} ⭐`);
-    if (refs >= 3 && ref.s > dep.s) flags.push(`⚠️ реф-бонусов (${ref.s}) больше, чем своих пополнений — проверь рефералов на мультиаккаунты`);
-    if (u.balance > inflow + crashProfit + upProfit - outflow + 1) flags.push('⚠️ баланс не сходится с историей');
-
-    const head = `📋 <b>${u.first_name}</b>${u.username ? ' @' + u.username : ''} · id <code>${u.id}</code>
-Зарегистрирован: ${dt(u.created_at)}${u.ref_by ? ` · пригласил id ${u.ref_by}` : ''}
-
-💰 Баланс: <b>${u.balance} ⭐</b> · отыграть до вывода: ${u.wager_left} ⭐
-➕ Пополнил: ${dep.s} ⭐ · платежей: ${dep.c}
-➖ Вывел: ${wd.done} ⭐${wd.wait ? ` · ждёт: ${wd.wait} ⭐` : ''} · заявок: ${wd.c}
-🚀 Ракетка: ставок ${-cb.s} ⭐ (${cb.c}) · выиграл ${cw.s} ⭐ → ${crashProfit >= 0 ? '+' : ''}${crashProfit} ⭐
-⬆️ Улучшение: ставок ${-ub.s} ⭐ (${ub.c}) · выиграл ${uw.s} ⭐ → ${upProfit >= 0 ? '+' : ''}${upProfit} ⭐
-🎁 NFT в инвентаре: ${items} · продал на ${sell.s} ⭐
-👥 Рефералов: ${refs} · бонусов ${ref.s} ⭐${adm.s ? `\n🛠 От админа: ${adm.s} ⭐` : ''}
-${flags.length ? '\n' + flags.join('\n') : '\n✅ Подозрительного не найдено'}`;
-
-    const NAMES = { deposit: '➕ пополнение', withdraw: '➖ вывод', withdraw_refund: '↩️ возврат вывода', crash_bet: '🚀 ставка', crash_win: '🚀 выигрыш',
-      upgrade_bet: '⬆️ ставка', upgrade_win: '⬆️ выигрыш', sell: '🎁 продажа NFT', ref_bonus: '👥 реф-бонус', admin: '🛠 админ', dev: '🧪 dev' };
-    const rows = db.prepare("SELECT * FROM tx WHERE user_id=? AND type != 'wager' ORDER BY id DESC LIMIT 5000").all(u.id);
-    const line = (r) => {
-      let m = {}; try { m = JSON.parse(r.meta || '{}'); } catch {}
-      const extra = m.m ? ` · x${m.m}` : m.round ? ` · раунд #${m.round}` : m.mult ? ` · x${m.mult}` : m.from ? ` · от id ${m.from}` : m.by ? ` · админ ${m.by}` : '';
-      return `${dt(r.created_at)}  ${(NAMES[r.type] || r.type).padEnd(18)} ${r.amount > 0 ? '+' : ''}${r.amount} ⭐${extra}`;
-    };
-    const last = rows.slice(0, 15).map(line).join('\n') || 'операций нет';
-    await ctx.reply(`${head}\n\n<b>Последние операции:</b>\n<pre>${last.replace(/</g, '&lt;')}</pre>`, { parse_mode: 'HTML' });
-
-    // полный лог файлом
-    const wds = db.prepare('SELECT * FROM withdrawals WHERE user_id=? ORDER BY id').all(u.id)
-      .map((w) => `#${w.id}  ${dt(w.created_at)}  ${w.amount} ⭐  ${w.status}${w.reason ? ' (' + w.reason + ')' : ''}${w.decided_by ? ' · решил ' + w.decided_by : ''}`);
-    const pays = db.prepare('SELECT * FROM payments WHERE user_id=? ORDER BY created_at').all(u.id)
-      .map((p) => `${dt(p.created_at)}  +${p.amount} ⭐  charge ${p.charge_id}`);
-    const file = [`ЛОГ ИГРОКА ${u.first_name}${u.username ? ' @' + u.username : ''} (id ${u.id}) · выгружено ${dt(Date.now())} (${tz})`, '',
-      head.replace(/<[^>]+>/g, ''), '', '=== ПОПОЛНЕНИЯ ===', ...(pays.length ? pays : ['нет']), '',
-      '=== ЗАЯВКИ НА ВЫВОД ===', ...(wds.length ? wds : ['нет']), '', `=== ВСЕ ОПЕРАЦИИ (${rows.length}) ===`, ...rows.map(line)].join('\n');
-    await ctx.replyWithDocument(new InputFile(Buffer.from(file, 'utf8'), `log_${u.username || u.id}.txt`)).catch((e) => ctx.reply(`Файл не отправился: ${e.message}`));
-  });
-
   bot.command('stats', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return;
     const s = db.prepare(`SELECT

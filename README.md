@@ -27,7 +27,7 @@ npm run dev          # DEV_MODE=1, тестовые NFT на складе
 По коллекции: `/setprice Plush Pepe 15000`, список `/prices`. Без цены — `DEFAULT_NFT_PRICE`.
 
 ### Админ-команды
-`/stats`, `/prices`, `/setprice <коллекция> <звёзды>`, `/addbalance @username|id <сумма>` (минус — списать), `/user @username|id`, `/logs @username|id` (полная история игрока + файл), `/withdrawals`, `/sync`
+`/stats`, `/prices`, `/setprice <коллекция> <звёзды>`, `/addbalance @username|id <сумма>` (минус — списать), `/user @username|id`, `/withdrawals`, `/sync`
 
 ## Картинки и анимации NFT
 - Если подарок пришёл из StaticGram и у модели есть стикер — показывается он (`.tgs` распаковывается в Lottie и анимируется).
@@ -48,7 +48,7 @@ npm run dev          # DEV_MODE=1, тестовые NFT на складе
 
 ## Механика
 - **Ракетка:** раунд = 8 с ставок → полёт `m(t)=e^(0.00006·t)` → краш. Ставка только звёздами, выплата звёздами. Автовывод. Provably fair: до раунда публикуется `sha256(seed)`, после — `seed`, краш = `HMAC_SHA256(seed,"epic-gift-rocket")` → `P(≥x) = (1−edge)/x`.
-- **Улучшение:** ставка звёздами → цель: NFT со склада или множитель x1.5…x20. Шанс = `ставка / цель × (1 − UPGRADE_EDGE)`, от 1% до 70%.
+- **Улучшение:** ставка звёздами → цель: NFT со склада или множитель x1.5…x20. Шанс = `ставка / цель × (1 − UPGRADE_EDGE)`, от 1% до 75%.
 - **Кошелёк:** пополнение `createInvoiceLink` (XTR) + `openInvoice`; вывод звёзд — расширение StaticGram `withdrawStarBalance` (с баланса бота).
 - **Рефералка:** `REF_PERCENT`% с каждого пополнения друга (ссылка `?startapp=ref<id>` или `/start ref<id>`).
 - **Рейтинг:** сумма ставок за неделю (пн 00:00 UTC). Призы в UI — выдаются вручную через `/addbalance`.

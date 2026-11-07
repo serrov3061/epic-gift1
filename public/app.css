@@ -556,3 +556,4 @@ html.low-end .tabbar, html.low-end .backdrop { backdrop-filter: none; -webkit-ba
 @media (hover: hover) { .nft:hover, .hero-card:hover { transform: translateY(-3px); } }
 .sheet { transition: transform .4s var(--spring); }
 .tabbar { transition: transform .4s var(--spring), opacity .3s; }
+

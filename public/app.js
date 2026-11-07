@@ -527,9 +527,7 @@ function updateAction() {
   const b = myBet(); let text, cls = '';
   if (st.phase === 'betting') { if (b) { text = `Ставка ${fmt(b.value)} принята`; cls = 'wait'; } else text = 'Сделать ставку'; }
   else if (st.phase === 'flying') {
-    const mNow = multAt(sNow() - st.startAt), mMin = st.crashMin || 1;
-    if (b && !b.cashout && mNow <= mMin) { text = `Забрать можно после ${mMin.toFixed(2)}x`; cls = 'wait'; }
-    else if (b && !b.cashout) { text = `Забрать ${fmt(b.value * mNow)}`; cls = 'green'; }
+    if (b && !b.cashout) { text = `Забрать ${fmt(b.value * multAt(sNow() - st.startAt))}`; cls = 'green'; }
     else if (b) { text = `Выведено x${b.cashout.toFixed(2)} · +${fmt(b.payout)}`; cls = 'wait'; }
     else { text = 'Раунд идёт — ждите следующий'; cls = 'wait'; }
   } else text = 'Следующий раунд…', cls = 'wait';
@@ -657,7 +655,7 @@ $('#upTicks').innerHTML = Array.from({ length: 72 }, (_, i) => {
   return `<line class="${major ? 'major' : ''}" x1="${130 + Math.sin(a) * r1}" y1="${130 - Math.cos(a) * r1}" x2="${130 + Math.sin(a) * r2}" y2="${130 - Math.cos(a) * r2}"/>`;
 }).join('');
 const upInputValue = () => Number($('#upAmount').value) || 0;
-const chanceFor = (input, target) => (!(input > 0) || !(target > input) ? 0 : (input / target) * (1 - (S.cfg.upgradeEdge ?? .22)));
+const chanceFor = (input, target) => (!(input > 0) || !(target > input) ? 0 : (input / target) * (1 - (S.cfg.upgradeEdge ?? .15)));
 const pct = (c) => (!c ? '0%' : (c * 100 >= 10 ? Math.round(c * 100) : (c * 100).toFixed(1)) + '%');
 function targetValue() {
   const t = S.upTarget, input = upInputValue(); if (!t) return 0;
@@ -667,7 +665,7 @@ let coreKey = '';
 function renderUpgrade(gridToo = true) {
   const input = upInputValue();
   tweenNum($('#upInputValue'), input, 400);
-  const maxC = S.cfg.maxChance ?? .70, minC = S.cfg.minChance ?? .01, ok = (c) => c >= minC && c <= maxC;
+  const maxC = S.cfg.maxChance ?? .75, minC = S.cfg.minChance ?? .01, ok = (c) => c >= minC && c <= maxC;
   if (gridToo) {
     const grid = $('#upTargets');
     if (S.upSeg === 'items') {
@@ -680,7 +678,7 @@ function renderUpgrade(gridToo = true) {
         : Array.from({ length: 6 }, () => '<div class="skel" style="aspect-ratio:.8"></div>').join('');
     } else {
       grid.innerHTML = (S.cfg.multipliers || []).map((mu, i) => {
-        const c = (1 - (S.cfg.upgradeEdge ?? .22)) / mu;
+        const c = (1 - (S.cfg.upgradeEdge ?? .15)) / mu;
         return `<button class="nft mult reveal ${S.upTarget?.type === 'mult' && S.upTarget.mult === mu ? 'sel' : ''} ${ok(c) ? '' : 'dim'}" style="--i:${i}" data-mult="${mu}">
           <b>x${mu}</b><small>${pct(c)} · ${STAR}${fmt(input * mu)}</small></button>`;
       }).join('');
@@ -929,3 +927,4 @@ async function renderLanding() {
     if (sp === 'rocket' || sp === 'upgrade') go(sp);
   } catch (e) { fail(e); }
 })();
+

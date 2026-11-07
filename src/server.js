@@ -116,7 +116,7 @@ const refLink = (id) => (cfg.APP_SHORT_NAME
 
 app.get('/api/config', h(() => ({
   bot: cfg.BOT_USERNAME, relayer: cfg.RELAYER_USERNAME, minBet: cfg.MIN_BET, minDeposit: cfg.MIN_DEPOSIT,
-  minWithdraw: cfg.MIN_WITHDRAW, withdrawMax: cfg.WITHDRAW_MAX, withdrawDaily: cfg.WITHDRAW_DAILY, maxPayout: cfg.MAX_PAYOUT, crashMax: cfg.CRASH_MAX, crashMin: cfg.CRASH_MIN, sellRate: cfg.SELL_RATE, refPercent: cfg.REF_PERCENT, multipliers: MULTIPLIERS,
+  minWithdraw: cfg.MIN_WITHDRAW, withdrawMax: cfg.WITHDRAW_MAX, withdrawDaily: cfg.WITHDRAW_DAILY, maxPayout: cfg.MAX_PAYOUT, crashMax: cfg.CRASH_MAX, sellRate: cfg.SELL_RATE, refPercent: cfg.REF_PERCENT, multipliers: MULTIPLIERS,
   upgradeEdge: cfg.UPGRADE_EDGE, maxChance: cfg.UPGRADE_MAX_CHANCE, minChance: cfg.UPGRADE_MIN_CHANCE, dev: cfg.DEV_MODE,
 })));
 

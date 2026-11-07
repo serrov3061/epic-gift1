@@ -17,9 +17,8 @@ export const cfg = {
   DEV_MODE: process.env.DEV_MODE === '1' && !(process.env.BOT_TOKEN || '').trim(),
 
   // Ракетка
-  CRASH_EDGE: num(process.env.CRASH_EDGE, 0.15), // преимущество казино 15%
-  CRASH_MAX: num(process.env.CRASH_MAX, 100),        // потолок множителя ракетки
-  CRASH_MIN: num(process.env.CRASH_MIN, 1.10),       // ракетка всегда долетает хотя бы до этого икса; забрать можно только выше
+  CRASH_EDGE: num(process.env.CRASH_EDGE, 0.10), // преимущество казино 10%
+  CRASH_MAX: num(process.env.CRASH_MAX, 1000),       // потолок множителя ракетки
   BET_PHASE_MS: num(process.env.BET_PHASE_MS, 8000),
   CRASHED_PHASE_MS: num(process.env.CRASHED_PHASE_MS, 3500),
   MIN_BET: num(process.env.MIN_BET, 1),
@@ -27,9 +26,9 @@ export const cfg = {
   MAX_PAYOUT: num(process.env.MAX_PAYOUT, 0),         // 0 = без потолка выигрыша
 
   // Апгрейдер
-  UPGRADE_EDGE: num(process.env.UPGRADE_EDGE, 0.22),
+  UPGRADE_EDGE: num(process.env.UPGRADE_EDGE, 0.15),
   UPGRADE_MIN_CHANCE: num(process.env.UPGRADE_MIN_CHANCE, 0.01),
-  UPGRADE_MAX_CHANCE: num(process.env.UPGRADE_MAX_CHANCE, 0.70),
+  UPGRADE_MAX_CHANCE: num(process.env.UPGRADE_MAX_CHANCE, 0.75),
 
   // Экономика
   // 0 = коллекция без цены не продаётся и не участвует в апгрейде, пока админ не задаст /setprice
@@ -47,6 +46,5 @@ export const cfg = {
   // вывод больше суммы пополнений игрока — на одобрение админу (защита от «звёзд из воздуха»)
   WITHDRAW_REVIEW_OVER_DEPOSIT: process.env.WITHDRAW_REVIEW_OVER_DEPOSIT !== '0',
   RATING_PRIZES: (process.env.RATING_PRIZES || '5000,2500,1000,500,250').split(',').map(Number),
-  LOG_TZ: process.env.LOG_TZ || 'Asia/Yekaterinburg',
   GIFT_SYNC_MS: num(process.env.GIFT_SYNC_MS, 20000),
 };
