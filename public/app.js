@@ -143,11 +143,10 @@ window.addEventListener('load', () => hydrate());
 // ═══════════════ State ═══════════════
 const S = {
   cfg: {}, me: null, items: [], shop: [], showcase: [], refLink: '', live: [], online: 0,
-  shopLoaded: false, crash: null, offset: 0, rkSel: new Set(), upSel: new Set(), upTarget: null, upSeg: 'items', spinning: false,
+  shopLoaded: false, crash: null, offset: 0, upTarget: null, upSeg: 'items', spinning: false,
 };
 const orbit = (list, n, cls = () => '') => Array.from({ length: n }, (_, i) => (list[i] ? nftMedia(list[i], { anim: true, cls: cls(i) }) : `<div class="nft-media ${cls(i)}"><div class="hc-placeholder">${ic('gift')}</div></div>`)).join('');
 const itemById = (id) => S.items.find((i) => i.id === id);
-const selValue = (set) => [...set].reduce((s, id) => s + (itemById(id)?.value || 0), 0);
 const avatarHtml = (name, photo, cls = '') => (photo
   ? `<div class="avatar ${cls}" style="background-image:url('${esc(photo)}')"></div>`
   : `<div class="avatar ${cls}">${esc((name || '?')[0].toUpperCase())}</div>`);
@@ -215,8 +214,7 @@ function setBalance(b) {
 async function loadMe() {
   const r = await api('/api/me');
   S.me = r.user; S.items = r.items; S.refLink = r.refLink;
-  for (const set of [S.rkSel, S.upSel]) for (const id of set) if (!itemById(id)) set.delete(id);
-  renderMe(); renderInventory(); updateRocketItems(); renderUpgrade();
+  renderMe(); renderInventory(); renderUpgrade();
 }
 async function loadShop() {
   try { S.shop = await api('/api/shop'); S.shopLoaded = true; renderUpgrade(); renderShowcase(); } catch (e) { fail(e); }
@@ -327,31 +325,6 @@ function openWallet(tab = 'stars') {
 $('#btnDeposit').addEventListener('click', () => openWallet('stars'));
 function openLink(url) { tg?.openTelegramLink ? tg.openTelegramLink(url) : open(url, '_blank'); }
 
-// ═══════════════ Выбор NFT ═══════════════
-function pickItems(set, title, onDone) {
-  haptic.tap();
-  if (!S.items.length) { openWallet('nft'); return; }
-  const tmp = new Set(set);
-  openSheet(`
-    <h3>${title}</h3><p class="sub">Выберите подарки из инвентаря</p>
-    <div class="grid" id="pkGrid"></div>
-    <button class="btn-main" id="pkDone"><span></span><i class="shine"></i></button>`, (sheet) => {
-    const grid = $('#pkGrid', sheet);
-    grid.innerHTML = S.items.map((it, i) => nftCard(it, { sel: tmp.has(it.id), i })).join('');
-    const label = () => {
-      $('#pkDone span', sheet).innerHTML = tmp.size ? `Готово · ${tmp.size} шт · ${fmt([...tmp].reduce((s, id) => s + itemById(id).value, 0))} ${STAR}` : 'Готово';
-    };
-    grid.addEventListener('click', (e) => {
-      const el = e.target.closest('[data-id]'); if (!el) return;
-      haptic.sel(); const id = Number(el.dataset.id);
-      tmp.has(id) ? tmp.delete(id) : tmp.add(id);
-      el.classList.toggle('sel', tmp.has(id)); label();
-    });
-    $('#pkDone', sheet).addEventListener('click', () => { set.clear(); tmp.forEach((i) => set.add(i)); closeSheet(); onDone(); });
-    label();
-  });
-}
-
 // ═══════════════ Главная ═══════════════
 function renderLive() {
   const el = $('#liveList');
@@ -438,16 +411,10 @@ function renderBets() {
       : lost ? '<small>сгорело</small>' : st.phase === 'flying' ? `<small>${fmt(b.value * live)}</small>` : '<small>в игре</small>';
     return `<div class="bet ${fresh ? 'enter' : ''} ${won ? 'won' : ''} ${lost ? 'lost' : ''}">
       ${avatarHtml(b.name, b.photo)}
-      <div class="b-mid"><b>${esc(b.name)}${b.uid === S.me?.id ? '<span class="you">ВЫ</span>' : ''}</b><small>${b.items ? `${ic('gift')}${b.items} NFT · ` : ''}${STAR}${fmt(b.value)}</small></div>
+      <div class="b-mid"><b>${esc(b.name)}${b.uid === S.me?.id ? '<span class="you">ВЫ</span>' : ''}</b><small>ставка ${STAR}${fmt(b.value)}</small></div>
       <div class="b-right"><b>${STAR}${fmt(won ? b.payout : b.value)}</b>${right}</div></div>`;
   }).join('') : '<div class="empty-row">Пока никто не поставил — будь первым</div>';
 }
-function updateRocketItems() {
-  const n = S.rkSel.size;
-  $('#rkItemsInfo').innerHTML = n ? `${n} шт · ${fmt(selValue(S.rkSel))} ${STAR}` : (S.items.length ? `В инвентаре: ${S.items.length}` : 'Инвентарь пуст');
-  $('#rkThumbs').innerHTML = [...S.rkSel].slice(0, 3).map((id) => { const it = itemById(id); return it ? `<div style="background:${giftBg(it)}" class="nft-media">${it.image ? `<img src="${it.image}">` : ''}</div>` : ''; }).join('');
-}
-$('#rkPickItems').addEventListener('click', () => pickItems(S.rkSel, 'NFT в ставку', updateRocketItems));
 const betInput = $('#betAmount');
 $$('.round-btn').forEach((b) => b.addEventListener('click', () => { haptic.sel(); betInput.value = Math.max(0, (Number(betInput.value) || 0) + Number(b.dataset.step)); }));
 $$('.quick [data-q]').forEach((b) => b.addEventListener('click', () => {
@@ -460,8 +427,8 @@ $('#rkAction').addEventListener('click', async (e) => {
   try {
     if (st.phase === 'betting' && !b) {
       btn.disabled = true;
-      await api('/api/crash/bet', { amount: Number(betInput.value) || 0, itemIds: [...S.rkSel], auto: $('#autoOn').checked ? Number($('#autoValue').value) : null });
-      haptic.ok(); S.rkSel.clear(); updateRocketItems();
+      await api('/api/crash/bet', { amount: Number(betInput.value) || 0, auto: $('#autoOn').checked ? Number($('#autoValue').value) : null });
+      haptic.ok();
     } else if (st.phase === 'flying' && b && !b.cashout) {
       btn.disabled = true;
       const r = await api('/api/crash/cashout', {});
@@ -602,7 +569,7 @@ $('#upTicks').innerHTML = Array.from({ length: 72 }, (_, i) => {
   const a = (i / 72) * Math.PI * 2, major = i % 6 === 0, r1 = 118, r2 = major ? 127 : 123;
   return `<line class="${major ? 'major' : ''}" x1="${130 + Math.sin(a) * r1}" y1="${130 - Math.cos(a) * r1}" x2="${130 + Math.sin(a) * r2}" y2="${130 - Math.cos(a) * r2}"/>`;
 }).join('');
-const upInputValue = () => (Number($('#upAmount').value) || 0) + selValue(S.upSel);
+const upInputValue = () => Number($('#upAmount').value) || 0;
 const chanceFor = (input, target) => (!(input > 0) || !(target > input) ? 0 : (input / target) * (1 - (S.cfg.upgradeEdge ?? .08)));
 const pct = (c) => (!c ? '0%' : (c * 100 >= 10 ? Math.round(c * 100) : (c * 100).toFixed(1)) + '%');
 function targetValue() {
@@ -613,7 +580,6 @@ let coreKey = '';
 function renderUpgrade(gridToo = true) {
   const input = upInputValue();
   tweenNum($('#upInputValue'), input, 400);
-  $('#upItemsCount').textContent = S.upSel.size;
   const maxC = S.cfg.maxChance ?? .8, minC = S.cfg.minChance ?? .01, ok = (c) => c >= minC && c <= maxC;
   if (gridToo) {
     const grid = $('#upTargets');
@@ -656,11 +622,10 @@ function renderUpgrade(gridToo = true) {
     hydrate($('.wheel'));
   }
   if (t?.type === 'mult') $('#upTargetName').innerHTML = `${fmt(tv)} ${STAR}`;
-  $('#upSub').textContent = !t ? 'Выберите цель внизу' : !input ? 'Добавьте ставку' : c > maxC ? `Максимальный шанс ${pct(maxC)}` : c < minC ? 'Шанс слишком мал' : 'шанс улучшения';
+  $('#upSub').textContent = !t ? 'Выберите цель внизу' : !input ? 'Введите ставку в звёздах' : c > maxC ? `Максимальный шанс ${pct(maxC)}` : c < minC ? 'Шанс слишком мал' : 'шанс улучшения';
   $('#upGo').disabled = !(t && input > 0 && ok(c));
 }
 $('#upAmount').addEventListener('input', () => renderUpgrade());
-$('#upPickItems').addEventListener('click', () => pickItems(S.upSel, 'Что улучшаем?', () => renderUpgrade()));
 $$('#upSeg button').forEach((b) => b.addEventListener('click', () => {
   if (S.spinning) return;
   haptic.sel(); S.upSeg = b.dataset.seg; S.upTarget = null;
@@ -684,7 +649,7 @@ $('#upGo').addEventListener('click', async () => {
   const ptr = $('#upPointer');
   ptr.style.transition = 'none'; ptr.style.transform = 'rotate(0deg)'; ptr.getBoundingClientRect();
   try {
-    const r = await api('/api/upgrade', { amount: Number($('#upAmount').value) || 0, itemIds: [...S.upSel], target: S.upTarget });
+    const r = await api('/api/upgrade', { amount: Number($('#upAmount').value) || 0, target: S.upTarget });
     haptic.heavy(); wheel.classList.add('spinning');
     $('#upArc').style.strokeDasharray = `${C * r.chance} ${C}`;
     $('#upChance').textContent = pct(r.chance);
@@ -700,7 +665,7 @@ $('#upGo').addEventListener('click', async () => {
     setBalance(r.balance);
     await sleep(700);
     showUpgradeResult(r);
-    S.upSel.clear(); $('#upAmount').value = 0; S.upTarget = null; coreKey = '-';
+    $('#upAmount').value = 0; S.upTarget = null; coreKey = '-';
     S.spinning = false;
     loadMe(); loadShop();
   } catch (e) { S.spinning = false; wheel.classList.remove('spinning'); fail(e); renderUpgrade(); }
@@ -724,7 +689,7 @@ function renderInventory() {
     box.innerHTML = `<div class="empty reveal">
       <div class="empty-orbit">${orbit(S.showcase, 3)}</div>
       <h3>Инвентарь пуст</h3>
-      <p>Отправьте NFT-подарки ${r ? `на <span class="accent">@${esc(r)}</span>` : 'на аккаунт-ретранслятор'}, чтобы играть ими в апгрейде и ракетке.</p>
+      <p>Отправьте NFT-подарки ${r ? `на <span class="accent">@${esc(r)}</span>` : 'на аккаунт-ретранслятор'}, — их можно продать за звёзды или вывести обратно.</p>
       <button class="btn-main" id="invSend">${ic('send')}<span>Отправить подарок</span><i class="shine"></i></button>
       <div class="or">или</div>
       <button class="btn-ghost" id="invUp">${ic('up')}Выиграть в улучшении</button></div>`;
@@ -751,13 +716,11 @@ function itemActions(it) {
     ${attrs.length ? `<div class="attrs">${attrs.map((a) => `<span>${a}</span>`).join('')}</div>` : ''}
     <p class="sub">Оценка ${fmt(it.value)} звёзд</p>
     <div class="actions">
-      <button id="iaUp">${ic('up')}Улучшить</button>
       <button id="iaSell">${ic('sell')}Продать<small>${STAR}${fmt(sell)}</small></button>
       ${it.canTransfer ? `<button id="iaOut">${ic('out')}Вывести в StaticGram</button>` : ''}
     </div>
     <button class="btn-ghost" id="iaCancel">Закрыть</button>`, (s) => {
     $('#iaCancel', s).addEventListener('click', () => closeSheet());
-    $('#iaUp', s).addEventListener('click', () => { S.upSel = new Set([it.id]); closeSheet(); go('upgrade'); renderUpgrade(); });
     $('#iaSell', s).addEventListener('click', async () => {
       try { const r = await api(`/api/items/${it.id}/sell`, {}); haptic.ok(); setBalance(r.balance); island(`Продано за ${fmt(r.price)}`, 'ok', 'sell'); closeSheet(); loadMe(); } catch (e) { fail(e); }
     });
@@ -834,7 +797,7 @@ async function renderLanding() {
       <div class="land-orbit"><div class="ring-o"></div>
         ${orbit(show, 5, (i) => `o${i + 1}`)}</div>
       <h1>Подарки,<br><span class="grad-text">которые растут</span></h1>
-      <p class="lead">Ракетка и улучшение NFT-подарков StaticGram. Ставь звёзды или подарки — забирай редкие NFT и выводи их себе.</p>
+      <p class="lead">Ракетка и улучшение NFT-подарков StaticGram. Ставь звёзды — забирай редкие NFT и выводи их себе.</p>
       <a class="btn-main" href="${bot}">${ic('rocket')}<span>Открыть в StaticGram</span><i class="shine"></i></a>
     </section>
     <div class="land-feats">

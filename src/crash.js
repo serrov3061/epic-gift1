@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
 import { cfg } from './config.js';
-import { db, AppError, addBalance, takeUserItems, itemValue, getUser, logTx } from './db.js';
+import { db, AppError, addBalance, getUser, logTx } from './db.js';
 
 // Рост множителя: m(t) = e^(K·t), t в мс. 10 с ≈ 1.82x, 30 с ≈ 6.05x
 export const K = 0.00006;
@@ -69,7 +69,7 @@ export class CrashGame extends EventEmitter {
     this.emit('state');
   }
 
-  placeBet(userId, { amount = 0, itemIds = [], auto = null }) {
+  placeBet(userId, { amount = 0, auto = null }) {
     if (this.phase !== 'betting') throw new AppError('Ставки на этот раунд закрыты');
     if (this.bets.has(userId)) throw new AppError('Вы уже сделали ставку');
     amount = Math.floor(Number(amount) || 0);
@@ -77,14 +77,12 @@ export class CrashGame extends EventEmitter {
     auto = auto ? Math.floor(Number(auto) * 100) / 100 : null;
     if (auto !== null && (!(auto >= 1.01) || auto > cfg.CRASH_MAX)) throw new AppError('Автовывод от 1.01x');
 
+    if (amount < cfg.MIN_BET) throw new AppError(`Минимальная ставка ${cfg.MIN_BET} ⭐`);
+    if (amount > cfg.MAX_BET) throw new AppError(`Максимальная ставка ${cfg.MAX_BET} ⭐`);
     const bet = db.transaction(() => {
-      if (amount > 0) addBalance(userId, -amount, 'crash_bet', { round: this.roundId });
-      const items = takeUserItems(userId, itemIds);
-      const value = amount + items.reduce((s, it) => s + itemValue(it), 0);
-      if (value < cfg.MIN_BET) throw new AppError(`Минимальная ставка ${cfg.MIN_BET} ⭐`);
-      if (value > cfg.MAX_BET) throw new AppError(`Максимальная ставка ${cfg.MAX_BET} ⭐`);
-      logTx(userId, 'wager', value, { game: 'crash', round: this.roundId, items: items.map((i) => i.id) });
-      return { value, stars: amount, items: items.length, auto, cashout: null, payout: 0 };
+      addBalance(userId, -amount, 'crash_bet', { round: this.roundId });
+      logTx(userId, 'wager', amount, { game: 'crash', round: this.roundId });
+      return { value: amount, auto, cashout: null, payout: 0 };
     })();
 
     const u = getUser(userId);
@@ -93,7 +91,6 @@ export class CrashGame extends EventEmitter {
     this.bets.set(userId, bet);
     this.emit('state');
     this.emit('balance', userId);
-    if (bet.items) this.emit('inventory', userId);
     return bet;
   }
 
@@ -131,7 +128,7 @@ export class CrashGame extends EventEmitter {
       history: this.history,
       serverNow: Date.now(),
       bets: [...this.bets].map(([uid, b]) => ({
-        uid, name: b.name, photo: b.photo, value: b.value, items: b.items, cashout: b.cashout, payout: b.payout,
+        uid, name: b.name, photo: b.photo, value: b.value, cashout: b.cashout, payout: b.payout,
       })).sort((a, b) => b.value - a.value),
     };
   }

@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { cfg } from './config.js';
-import { db, AppError, addBalance, takeUserItems, itemValue, logTx, publicItem } from './db.js';
+import { db, AppError, addBalance, itemValue, logTx, publicItem } from './db.js';
 
 export const MULTIPLIERS = [1.5, 2, 3, 5, 10, 20];
 
@@ -10,25 +10,23 @@ export function calcChance(inputValue, targetValue) {
 }
 
 /**
- * Апгрейд: ставим звёзды и/или NFT, цель — NFT со склада или множитель (выигрыш звёздами).
+ * Апгрейд: ставим звёзды, цель — NFT со склада или множитель (выигрыш звёздами).
  * target = { type: 'item', id } | { type: 'mult', mult }
  */
-export function doUpgrade(userId, { amount = 0, itemIds = [], target }) {
+export function doUpgrade(userId, { amount = 0, target }) {
   amount = Math.floor(Number(amount) || 0);
   if (amount < 0) throw new AppError('Неверная сумма');
   if (!target) throw new AppError('Выберите цель');
 
   return db.transaction(() => {
-    if (amount > 0) addBalance(userId, -amount, 'upgrade_bet');
-    const items = takeUserItems(userId, itemIds);
-    const inputValue = amount + items.reduce((s, it) => s + itemValue(it), 0);
-    if (inputValue < cfg.MIN_BET) throw new AppError('Добавьте звёзды или подарок');
+    if (amount < cfg.MIN_BET) throw new AppError(`Минимальная ставка ${cfg.MIN_BET} ⭐`);
+    addBalance(userId, -amount, 'upgrade_bet');
+    const inputValue = amount;
 
     let targetValue, targetItem = null;
     if (target.type === 'item') {
       targetItem = db.prepare("SELECT * FROM items WHERE id=? AND owner_id IS NULL AND status='available'").get(Number(target.id));
       if (!targetItem) throw new AppError('Этот подарок уже забрали');
-      if (items.some((i) => i.id === targetItem.id)) throw new AppError('Нельзя улучшать в тот же подарок');
       targetValue = itemValue(targetItem);
     } else if (target.type === 'mult' && MULTIPLIERS.includes(Number(target.mult))) {
       targetValue = Math.floor(inputValue * Number(target.mult));
@@ -53,7 +51,6 @@ export function doUpgrade(userId, { amount = 0, itemIds = [], target }) {
       win, chance, roll, inputValue, targetValue,
       item: targetItem && win ? publicItem({ ...targetItem, owner_id: userId }) : null,
       stars: !targetItem && win ? targetValue : 0,
-      consumedItems: items.length,
     };
   })();
 }
