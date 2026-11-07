@@ -6,11 +6,19 @@ import { refFromParam } from './auth.js';
 export const bot = cfg.BOT_TOKEN ? new Bot(cfg.BOT_TOKEN, { client: { apiRoot: cfg.API_ROOT } }) : null;
 const isAdmin = (id) => cfg.ADMIN_IDS.includes(id);
 let globalMenuOk = false;
+let workingVariant = null;
 let hooks = { onBalance: () => {}, onInventory: () => {} };
 export const setBotHooks = (h) => { hooks = { ...hooks, ...h }; };
 
-const appButton = (text = '🎁 Играть') =>
-  new InlineKeyboard().webApp(text, cfg.WEBAPP_URL);
+// Кнопка открытия Mini App — тот вариант, который StaticGram принял в /start
+const appButton = (text = '🎁 Играть') => {
+  const u = bot?.botInfo?.username || cfg.BOT_USERNAME;
+  if (workingVariant === 'app_link' && cfg.APP_SHORT_NAME) return new InlineKeyboard().url(text, `https://staticgram.top/${u}/${cfg.APP_SHORT_NAME}`);
+  if (workingVariant === 'main_app_link') return new InlineKeyboard().url(text, `https://staticgram.top/${u}?startapp=play`);
+  if (workingVariant === 'url') return new InlineKeyboard().url(text, cfg.WEBAPP_URL);
+  if (workingVariant === 'text' || workingVariant === 'reply_web_app') return undefined;
+  return new InlineKeyboard().webApp(text, cfg.WEBAPP_URL);
+};
 
 /** Raw-вызов метода StaticGram (в т.ч. расширений, которых нет в grammY). */
 export async function callApi(method, payload) {
@@ -104,7 +112,8 @@ export async function syncGifts() {
         const r = importGift(g);
         if (r) {
           hooks.onInventory(r.ownerId);
-          bot.api.sendMessage(r.ownerId, `🎁 ${r.title} зачислен в инвентарь Epic Gift`, { reply_markup: appButton('Открыть') }).catch(() => {});
+          bot.api.sendMessage(r.ownerId, `🎁 ${r.title} зачислен в инвентарь Epic Gift`, { reply_markup: appButton('Открыть') })
+            .catch(() => bot.api.sendMessage(r.ownerId, `🎁 ${r.title} зачислен в инвентарь Epic Gift`).catch(() => {}));
         }
       }
       offset = res.next_offset || '';
@@ -139,18 +148,23 @@ export function startBot() {
       bot.api.setChatMenuButton({ chat_id: ctx.chat.id, menu_button: { type: 'web_app', text: 'Играть', web_app: { url: cfg.WEBAPP_URL } } })
         .catch((e) => console.error('[bot] menu (chat):', e.message));
     }
-    // web_app-кнопка → обычная ссылка-кнопка → просто текст (бот ответит в любом случае)
+    // Перебираем варианты кнопки, пока StaticGram не примет; рабочий запоминаем
+    const bot_ = bot.botInfo?.username || cfg.BOT_USERNAME;
     const variants = [
-      { reply_markup: appButton() },
-      { reply_markup: new InlineKeyboard().url('🎁 Играть', cfg.WEBAPP_URL) },
-      {},
-    ];
-    for (const [i, extra] of variants.entries()) {
+      ['web_app', { reply_markup: new InlineKeyboard().webApp('🎁 Играть', cfg.WEBAPP_URL) }],
+      cfg.APP_SHORT_NAME && ['app_link', { reply_markup: new InlineKeyboard().url('🎁 Играть', `https://staticgram.top/${bot_}/${cfg.APP_SHORT_NAME}`) }],
+      ['main_app_link', { reply_markup: new InlineKeyboard().url('🎁 Играть', `https://staticgram.top/${bot_}?startapp=play`) }],
+      ['reply_web_app', { reply_markup: { keyboard: [[{ text: '🎁 Играть', web_app: { url: cfg.WEBAPP_URL } }]], resize_keyboard: true, is_persistent: true } }],
+      ['url', { reply_markup: new InlineKeyboard().url('🎁 Играть', cfg.WEBAPP_URL) }],
+      ['text', {}],
+    ].filter(Boolean);
+    const ordered = workingVariant ? [variants.find((v) => v[0] === workingVariant), ...variants.filter((v) => v[0] !== workingVariant)].filter(Boolean) : variants;
+    for (const [name, extra] of ordered) {
       try {
-        await ctx.reply(i ? `${text}\n\n👉 ${cfg.WEBAPP_URL || 'WEBAPP_URL не задан'}` : text, { parse_mode: 'HTML', ...extra });
-        if (i) console.error(`[bot] /start отправлен запасным вариантом №${i}: StaticGram не принимает WEBAPP_URL=${JSON.stringify(cfg.WEBAPP_URL)}`);
+        await ctx.reply(name === 'text' ? `${text}\n\n👉 ${cfg.WEBAPP_URL}` : text, { parse_mode: 'HTML', ...extra });
+        if (workingVariant !== name) { workingVariant = name; console.log(`[bot] кнопка /start: работает вариант «${name}»`); }
         break;
-      } catch (e) { console.error(`[bot] /start вариант ${i}:`, e.message); }
+      } catch (e) { console.error(`[bot] /start вариант «${name}» отклонён:`, e.message); }
     }
   });
 
@@ -167,7 +181,8 @@ export function startBot() {
       hooks.onBalance(Number(uid));
       const ref = getUser(Number(uid))?.ref_by;
       if (ref) hooks.onBalance(ref);
-      await ctx.reply(`✅ Баланс пополнен на ${p.total_amount} ⭐`, { reply_markup: appButton('Играть') });
+      await ctx.reply(`✅ Баланс пополнен на ${p.total_amount} ⭐`, { reply_markup: appButton('Играть') })
+        .catch(() => ctx.reply(`✅ Баланс пополнен на ${p.total_amount} ⭐`).catch(() => {}));
     }
   });
 
