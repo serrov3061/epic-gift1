@@ -11,7 +11,7 @@ COPY . .
 
 ENV NODE_ENV=production \
     PORT=3000 \
-    DB_PATH=/app/data/data.db
+    DB_PATH=./data/data.db
 RUN mkdir -p /app/data
 EXPOSE 3000
 CMD ["node", "src/server.js"]

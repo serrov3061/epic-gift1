@@ -12,7 +12,7 @@ export const cfg = {
   BUSINESS_CONNECTION_ID: process.env.BUSINESS_CONNECTION_ID || '',
   ADMIN_IDS: (process.env.ADMIN_IDS || '').split(',').map((s) => Number(s.trim())).filter(Boolean),
   PORT: num(process.env.PORT, 3000),
-  DB_PATH: process.env.DB_PATH || './data.db',
+  DB_PATH: process.env.DB_PATH || './data/data.db',
   DEV_MODE: process.env.DEV_MODE === '1',
 
   // Ракетка
