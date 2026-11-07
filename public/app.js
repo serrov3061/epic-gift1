@@ -304,6 +304,7 @@ function openWallet(tab = 'stars') {
         $('#wRelayer', body)?.addEventListener('click', () => openLink(`https://staticgram.top/${r}`));
         hydrate(body);
       } else {
+        api('/api/me').then((r) => { S.me = r.user; if ($('#wOut', body) && r.user.wagerLeft > 0 && !$('.wager-note', body)) $('.sub', body).insertAdjacentHTML('afterend', `<div class="wager-note">${ic('clock')}<div><b>Отыграйте ещё ${fmt(r.user.wagerLeft)} ⭐</b><small>Пополнения и бонусы нужно один раз прокрутить в ставках — так мы защищаемся от отмыва</small></div></div>`); }).catch(() => {});
         body.innerHTML = `
           <p class="sub">Вывод звёзд на ваш аккаунт StaticGram · от ${fmt(S.cfg.minWithdraw)}</p>
           ${S.me?.wagerLeft > 0 ? `<div class="wager-note">${ic('clock')}<div><b>Отыграйте ещё ${fmt(S.me.wagerLeft)} ⭐</b><small>Пополнения и бонусы нужно один раз прокрутить в ставках — так мы защищаемся от отмыва</small></div></div>` : ''}
