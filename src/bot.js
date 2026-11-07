@@ -5,6 +5,7 @@ import { refFromParam } from './auth.js';
 
 export const bot = cfg.BOT_TOKEN ? new Bot(cfg.BOT_TOKEN, { client: { apiRoot: cfg.API_ROOT } }) : null;
 const isAdmin = (id) => cfg.ADMIN_IDS.includes(id);
+let globalMenuOk = false;
 let hooks = { onBalance: () => {}, onInventory: () => {} };
 export const setBotHooks = (h) => { hooks = { ...hooks, ...h }; };
 
@@ -132,11 +133,19 @@ export function startBot() {
 
   bot.command('start', async (ctx) => {
     ensureUser(ctx.from, refFromParam(ctx.match));
-    await ctx.reply(
-      '<b>Epic Gift</b> 🎁\n\nКрути ракетку, улучшай подарки и забирай NFT.\n'
-      + (cfg.RELAYER_USERNAME ? `\nЧтобы закинуть NFT — отправь подарок на @${cfg.RELAYER_USERNAME}.` : ''),
-      { parse_mode: 'HTML', reply_markup: appButton() },
-    );
+    const text = '<b>Epic Gift</b> 🎁\n\nКрути ракетку, улучшай подарки и забирай NFT.\n'
+      + (cfg.RELAYER_USERNAME ? `\nЧтобы закинуть NFT — отправь подарок на @${cfg.RELAYER_USERNAME}.` : '');
+    if (!globalMenuOk && cfg.WEBAPP_URL) {
+      bot.api.setChatMenuButton({ chat_id: ctx.chat.id, menu_button: { type: 'web_app', text: 'Играть', web_app: { url: cfg.WEBAPP_URL } } })
+        .catch((e) => console.error('[bot] menu (chat):', e.message));
+    }
+    try {
+      await ctx.reply(text, { parse_mode: 'HTML', reply_markup: appButton() });
+    } catch (e) {
+      console.error('[bot] web_app button:', e.message);
+      // запасной вариант — обычная ссылка
+      await ctx.reply(`${text}\n\n👉 ${cfg.WEBAPP_URL}`, { parse_mode: 'HTML', reply_markup: new InlineKeyboard().url('🎁 Играть', cfg.WEBAPP_URL) });
+    }
   });
 
   bot.on('pre_checkout_query', async (ctx) => {
@@ -201,15 +210,32 @@ export function startBot() {
   bot.command('sync', async (ctx) => { if (isAdmin(ctx.from.id)) { await syncGifts(); ctx.reply('Синхронизировано'); } });
 
   bot.catch((e) => console.error('[bot]', e.message));
-  bot.start({
-    allowed_updates: ['message', 'callback_query', 'pre_checkout_query', 'business_connection'],
-    onStart: async (me) => {
-      console.log(`[bot] @${me.username} запущен`);
-      if (cfg.WEBAPP_URL) {
-        await bot.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Играть', web_app: { url: cfg.WEBAPP_URL } } }).catch((e) => console.error('[bot] menu:', e.message));
-      }
-    },
-  });
+  if (!cfg.WEBAPP_URL.startsWith('https://')) console.error('[bot] WEBAPP_URL должен начинаться с https:// — сейчас:', JSON.stringify(cfg.WEBAPP_URL));
+
+  const run = async () => {
+    try {
+      await bot.api.deleteWebhook().catch(() => {});
+      await bot.start({
+        allowed_updates: ['message', 'callback_query', 'pre_checkout_query', 'business_connection'],
+        onStart: async (me) => {
+          console.log(`[bot] @${me.username} запущен`);
+          if (!cfg.WEBAPP_URL) return;
+          try {
+            await bot.api.setChatMenuButton({ menu_button: { type: 'web_app', text: 'Играть', web_app: { url: cfg.WEBAPP_URL } } });
+            globalMenuOk = true;
+            console.log('[bot] кнопка меню установлена');
+          } catch (e) {
+            console.error('[bot] общая кнопка меню не принята:', e.message, '— ставлю каждому игроку при /start');
+          }
+        },
+      });
+    } catch (e) {
+      const conflict = e?.error_code === 409 || /409|Conflict/.test(e?.message || '');
+      console.error(conflict ? '[bot] 409: работает другая копия бота, переподключаюсь через 5 с' : `[bot] polling упал: ${e.message}, перезапуск через 5 с`);
+      setTimeout(run, 5000);
+    }
+  };
+  run();
   setInterval(syncGifts, cfg.GIFT_SYNC_MS);
   syncGifts();
 }

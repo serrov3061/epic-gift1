@@ -248,3 +248,6 @@ if (cfg.DEV_MODE) {
 
 server.listen(cfg.PORT, () => console.log(`[http] Epic Gift на :${cfg.PORT}`));
 startBot();
+
+// не падать из-за случайных ошибок сети/API
+process.on('unhandledRejection', (e) => console.error('[unhandled]', e?.message || e));
