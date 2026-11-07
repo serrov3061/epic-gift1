@@ -18,7 +18,7 @@ export const cfg = {
 
   // Ракетка
   CRASH_EDGE: num(process.env.CRASH_EDGE, 0.10), // преимущество казино 10%
-  CRASH_MAX: num(process.env.CRASH_MAX, 1000),       // потолок множителя ракетки
+  CRASH_MAX: num(process.env.CRASH_MAX, 100),        // потолок множителя ракетки
   BET_PHASE_MS: num(process.env.BET_PHASE_MS, 8000),
   CRASHED_PHASE_MS: num(process.env.CRASHED_PHASE_MS, 3500),
   MIN_BET: num(process.env.MIN_BET, 1),
