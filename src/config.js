@@ -17,7 +17,7 @@ export const cfg = {
   DEV_MODE: process.env.DEV_MODE === '1' && !(process.env.BOT_TOKEN || '').trim(),
 
   // Ракетка
-  CRASH_EDGE: num(process.env.CRASH_EDGE, 0.10), // преимущество казино 10%
+  CRASH_EDGE: num(process.env.CRASH_EDGE, 0.15), // преимущество казино 15%
   CRASH_MAX: num(process.env.CRASH_MAX, 100),        // потолок множителя ракетки
   BET_PHASE_MS: num(process.env.BET_PHASE_MS, 8000),
   CRASHED_PHASE_MS: num(process.env.CRASHED_PHASE_MS, 3500),
@@ -26,9 +26,9 @@ export const cfg = {
   MAX_PAYOUT: num(process.env.MAX_PAYOUT, 0),         // 0 = без потолка выигрыша
 
   // Апгрейдер
-  UPGRADE_EDGE: num(process.env.UPGRADE_EDGE, 0.15),
+  UPGRADE_EDGE: num(process.env.UPGRADE_EDGE, 0.22),
   UPGRADE_MIN_CHANCE: num(process.env.UPGRADE_MIN_CHANCE, 0.01),
-  UPGRADE_MAX_CHANCE: num(process.env.UPGRADE_MAX_CHANCE, 0.75),
+  UPGRADE_MAX_CHANCE: num(process.env.UPGRADE_MAX_CHANCE, 0.70),
 
   // Экономика
   // 0 = коллекция без цены не продаётся и не участвует в апгрейде, пока админ не задаст /setprice
