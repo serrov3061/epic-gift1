@@ -21,7 +21,7 @@ const app = express();
 app.disable('x-powered-by');
 app.use(compression({ threshold: 1024 })); // gzip: app.js/css/lottie в 3–5 раз меньше
 app.use(express.json({ limit: '20kb' }));
-app.use(express.static(path.join(__dirname, '../public'), { maxAge: cfg.DEV_MODE ? 0 : '10m' }));
+app.use(express.static(path.join(__dirname, '../public'), { maxAge: cfg.DEV_MODE ? 0 : '10m', setHeaders: (res, f) => { if (f.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache'); } }));
 app.get('/vendor/lottie.js', (req, res) => res.sendFile(path.join(__dirname, '../node_modules/lottie-web/build/player/lottie_light.min.js'), { maxAge: '30d', immutable: true }));
 
 // ───────────── auth ─────────────
