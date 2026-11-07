@@ -468,7 +468,9 @@ function updateAction() {
   const b = myBet(); let text, cls = '';
   if (st.phase === 'betting') { if (b) { text = `Ставка ${fmt(b.value)} принята`; cls = 'wait'; } else text = 'Сделать ставку'; }
   else if (st.phase === 'flying') {
-    if (b && !b.cashout) { text = `Забрать ${fmt(b.value * multAt(sNow() - st.startAt))}`; cls = 'green'; }
+    const mNow = multAt(sNow() - st.startAt), mMin = st.crashMin || 1;
+    if (b && !b.cashout && mNow <= mMin) { text = `Забрать можно после ${mMin.toFixed(2)}x`; cls = 'wait'; }
+    else if (b && !b.cashout) { text = `Забрать ${fmt(b.value * mNow)}`; cls = 'green'; }
     else if (b) { text = `Выведено x${b.cashout.toFixed(2)} · +${fmt(b.payout)}`; cls = 'wait'; }
     else { text = 'Раунд идёт — ждите следующий'; cls = 'wait'; }
   } else text = 'Следующий раунд…', cls = 'wait';
