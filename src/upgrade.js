@@ -14,8 +14,9 @@ export function calcChance(inputValue, targetValue) {
  * target = { type: 'item', id } | { type: 'mult', mult }
  */
 export function doUpgrade(userId, { amount = 0, target }) {
-  amount = Math.floor(Number(amount) || 0);
-  if (amount < 0) throw new AppError('Неверная сумма');
+  if (!/^\d{1,9}$/.test(String(amount ?? ''))) throw new AppError('Неверная сумма');
+  amount = Number(amount);
+  if (amount > cfg.MAX_BET) throw new AppError(`Максимальная ставка ${cfg.MAX_BET} ⭐`);
   if (!target) throw new AppError('Выберите цель');
 
   return db.transaction(() => {
@@ -35,6 +36,7 @@ export function doUpgrade(userId, { amount = 0, target }) {
     } else throw new AppError('Неверная цель');
 
     if (targetValue <= inputValue) throw new AppError('Цель должна быть дороже ставки');
+    if (target.type === 'mult' && targetValue > cfg.MAX_PAYOUT) throw new AppError(`Максимальный выигрыш ${cfg.MAX_PAYOUT} ⭐ — уменьшите ставку или множитель`);
     const chance = calcChance(inputValue, targetValue);
     if (chance < cfg.UPGRADE_MIN_CHANCE) throw new AppError('Слишком маленький шанс — добавьте ставку');
     if ((inputValue / targetValue) * (1 - cfg.UPGRADE_EDGE) > cfg.UPGRADE_MAX_CHANCE) {

@@ -314,18 +314,19 @@ function openWallet(tab = 'stars') {
       } else {
         api('/api/me').then((r) => { S.me = r.user; if ($('#wOut', body) && r.user.wagerLeft > 0 && !$('.wager-note', body)) $('.sub', body).insertAdjacentHTML('afterend', `<div class="wager-note">${ic('clock')}<div><b>Отыграйте ещё ${fmt(r.user.wagerLeft)} ⭐</b><small>Пополнения и бонусы нужно один раз прокрутить в ставках — так мы защищаемся от отмыва</small></div></div>`); }).catch(() => {});
         body.innerHTML = `
-          <p class="sub">Вывод звёзд на ваш аккаунт StaticGram · от ${fmt(S.cfg.minWithdraw)}</p>
+          <p class="sub">Вывод на ваш аккаунт StaticGram · от ${fmt(S.cfg.minWithdraw)} до ${fmt(S.cfg.withdrawMax)} ⭐ · до ${fmt(S.cfg.withdrawDaily)} ⭐ в сутки</p>
           ${S.me?.wagerLeft > 0 ? `<div class="wager-note">${ic('clock')}<div><b>Отыграйте ещё ${fmt(S.me.wagerLeft)} ⭐</b><small>Пополнения и бонусы нужно один раз прокрутить в ставках — так мы защищаемся от отмыва</small></div></div>` : ''}
           <label class="amount-input">${STAR}<input id="wOut" type="number" inputmode="numeric" value="${S.cfg.minWithdraw}"></label>
           <div class="quick"><button id="wMax">Весь баланс · ${fmt(S.me?.balance || 0)}</button></div>
           <button class="btn-main" id="wOutGo">${ic('out')}<span>Вывести</span><i class="shine"></i></button>
           <p class="sub" style="margin-top:14px">NFT выводятся из инвентаря — нажмите на подарок</p>`;
-        $('#wMax', body).addEventListener('click', () => { haptic.sel(); $('#wOut', body).value = S.me?.balance || 0; });
+        $('#wMax', body).addEventListener('click', () => { haptic.sel(); $('#wOut', body).value = Math.min(S.me?.balance || 0, S.cfg.withdrawMax || Infinity); });
         $('#wOutGo', body).addEventListener('click', async (e) => {
           const btn = e.currentTarget; btn.disabled = true;
           try {
             const r = await api('/api/withdraw', { amount: Number($('#wOut', body).value) });
-            setBalance(r.balance); loadMe(); haptic.ok(); island('Звёзды отправлены', 'ok', 'send'); closeSheet();
+            setBalance(r.balance); loadMe(); haptic.ok();
+            island(r.pending ? 'Заявка отправлена — ждите подтверждения' : 'Звёзды отправлены', 'ok', r.pending ? 'clock' : 'send'); closeSheet();
           } catch (err) { fail(err); } finally { btn.disabled = false; }
         });
       }

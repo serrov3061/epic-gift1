@@ -18,11 +18,12 @@ export const cfg = {
 
   // Ракетка
   CRASH_EDGE: num(process.env.CRASH_EDGE, 0.10), // преимущество казино 10%
-  CRASH_MAX: num(process.env.CRASH_MAX, 1000),
+  CRASH_MAX: num(process.env.CRASH_MAX, 100),        // потолок множителя ракетки
   BET_PHASE_MS: num(process.env.BET_PHASE_MS, 8000),
   CRASHED_PHASE_MS: num(process.env.CRASHED_PHASE_MS, 3500),
   MIN_BET: num(process.env.MIN_BET, 1),
-  MAX_BET: num(process.env.MAX_BET, 100000),
+  MAX_BET: num(process.env.MAX_BET, 10000),
+  MAX_PAYOUT: num(process.env.MAX_PAYOUT, 20000),     // максимальный выигрыш с одной ставки (ракетка и улучшение)
 
   // Апгрейдер
   UPGRADE_EDGE: num(process.env.UPGRADE_EDGE, 0.15),
@@ -38,6 +39,9 @@ export const cfg = {
   REF_PERCENT: num(process.env.REF_PERCENT, 10),
   MIN_DEPOSIT: num(process.env.MIN_DEPOSIT, 1),
   MIN_WITHDRAW: num(process.env.MIN_WITHDRAW, 100),
+  WITHDRAW_MAX: num(process.env.WITHDRAW_MAX, 5000),             // максимум за один вывод
+  WITHDRAW_DAILY: num(process.env.WITHDRAW_DAILY, 10000),        // максимум в сутки на игрока
+  WITHDRAW_AUTO_LIMIT: num(process.env.WITHDRAW_AUTO_LIMIT, 500), // выше — только после одобрения админом
   RATING_PRIZES: (process.env.RATING_PRIZES || '5000,2500,1000,500,250').split(',').map(Number),
   GIFT_SYNC_MS: num(process.env.GIFT_SYNC_MS, 20000),
 };

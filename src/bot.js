@@ -44,29 +44,93 @@ export async function createDepositLink(userId, amount) {
 }
 
 // ───────────── Вывод звёзд (расширение StaticGram withdrawStarBalance) ─────────────
-export async function withdrawStars(userId, amount) {
+// Защита: строгая валидация суммы, лимит на вывод и в сутки, отыгрыш,
+// крупные выводы и выводы больше депозитов — только после одобрения админом.
+const pendingWithdraw = new Set();
+const userTag = (u) => (u.username ? `@${u.username}` : u.first_name) + ` (id ${u.id})`;
+const wdStats = (userId) => db.prepare(`SELECT
+  (SELECT COALESCE(SUM(amount),0) FROM payments WHERE user_id=@u) dep,
+  (SELECT COALESCE(SUM(amount),0) FROM withdrawals WHERE user_id=@u AND status IN ('done','processing','pending','queued')) wd,
+  (SELECT COALESCE(SUM(amount),0) FROM withdrawals WHERE user_id=@u AND status IN ('done','processing','pending','queued') AND created_at > @day) day`)
+  .get({ u: userId, day: Date.now() - 864e5 });
+
+export async function withdrawStars(userId, rawAmount) {
+  if (!/^\d{1,9}$/.test(String(rawAmount ?? ''))) throw new AppError('Неверная сумма');
+  const amount = Number(rawAmount);
+  if (amount < cfg.MIN_WITHDRAW) throw new AppError(`Минимальный вывод ${cfg.MIN_WITHDRAW} ⭐`);
+  if (amount > cfg.WITHDRAW_MAX) throw new AppError(`Максимум за один вывод — ${cfg.WITHDRAW_MAX} ⭐`);
   const u = getUser(userId);
-  if (u?.wager_left > 0) throw new AppError(`Сначала отыграйте ещё ${u.wager_left} ⭐ в ставках — так защищаемся от отмыва`);
+  if (!u) throw new AppError('Пользователь не найден');
+  if (u.wager_left > 0) throw new AppError(`Сначала отыграйте ещё ${u.wager_left} ⭐ в ставках — так защищаемся от отмыва`);
   if (pendingWithdraw.has(userId)) throw new AppError('Предыдущий вывод ещё обрабатывается');
   pendingWithdraw.add(userId);
-  try { return await doWithdraw(userId, amount); } finally { pendingWithdraw.delete(userId); }
-}
-const pendingWithdraw = new Set();
-async function doWithdraw(userId, amount) {
-  const txId = db.transaction(() => {
-    addBalance(userId, -amount, 'withdraw', { status: 'pending' });
-    return db.prepare('SELECT last_insert_rowid() id').get().id;
-  })();
   try {
-    await callApi('withdrawStarBalance', { user_id: userId, star_count: amount, request_id: `w${txId}` });
-    db.prepare("UPDATE tx SET meta=? WHERE id=?").run(JSON.stringify({ status: 'done' }), txId);
+    const st = wdStats(userId);
+    if (st.day + amount > cfg.WITHDRAW_DAILY) throw new AppError(`Лимит вывода — ${cfg.WITHDRAW_DAILY} ⭐ в сутки. Сегодня доступно ещё ${Math.max(0, cfg.WITHDRAW_DAILY - st.day)} ⭐`);
+    // списываем сразу (атомарно, с проверкой баланса) и создаём заявку
+    const review = amount > cfg.WITHDRAW_AUTO_LIMIT || st.wd + amount > st.dep;
+    const wdId = db.transaction(() => {
+      addBalance(userId, -amount, 'withdraw');
+      return db.prepare('INSERT INTO withdrawals(user_id,amount,status,created_at) VALUES(?,?,?,?)')
+        .run(userId, amount, review ? 'pending' : 'queued', Date.now()).lastInsertRowid;
+    })();
+    if (review) {
+      const reason = amount > cfg.WITHDRAW_AUTO_LIMIT ? `больше ${cfg.WITHDRAW_AUTO_LIMIT} ⭐` : 'больше суммы депозитов';
+      notifyAdmins(
+        `💸 Заявка на вывод #${wdId}\n${userTag(u)}\nСумма: ${amount} ⭐ (${reason})\n`
+        + `Депозиты: ${st.dep} ⭐ · Уже выведено: ${st.wd} ⭐\nБаланс после: ${getUser(userId).balance} ⭐`,
+        new InlineKeyboard().text('✅ Одобрить', `wd:ok:${wdId}`).text('❌ Отклонить', `wd:no:${wdId}`),
+      );
+      return { pending: true, id: wdId };
+    }
+    await payoutWithdrawal(wdId);
+    return { pending: false, id: wdId };
+  } finally { pendingWithdraw.delete(userId); }
+}
+
+/** Отправка звёзд по заявке. Идемпотентно: request_id = id заявки. */
+async function payoutWithdrawal(wdId, adminId = null) {
+  // атомарный захват: выплатить заявку можно ровно один раз
+  const claimed = db.prepare("UPDATE withdrawals SET status='processing', decided_by=COALESCE(?,decided_by), updated_at=? WHERE id=? AND status IN ('pending','queued')")
+    .run(adminId, Date.now(), wdId).changes;
+  if (!claimed) throw new AppError('Заявка уже обработана');
+  const w = db.prepare('SELECT * FROM withdrawals WHERE id=?').get(wdId);
+  try {
+    const res = await callApi('withdrawStarBalance', { user_id: w.user_id, star_count: w.amount, request_id: `wd${wdId}` });
+    if (res?.star_count !== undefined && Number(res.star_count) !== w.amount) console.error(`[withdraw] #${wdId}: StaticGram списал ${res.star_count}, ожидалось ${w.amount}`);
+    db.prepare("UPDATE withdrawals SET status='done', updated_at=? WHERE id=?").run(Date.now(), wdId);
+    bot.api.sendMessage(w.user_id, `✅ Вывод ${w.amount} ⭐ отправлен`).catch(() => {});
   } catch (e) {
-    if (e instanceof AppError) { // сервер явно отказал — возвращаем звёзды
-      db.transaction(() => addBalance(userId, amount, 'withdraw_refund', { txId }))();
+    if (e instanceof AppError) { // StaticGram явно отказал — возвращаем звёзды
+      db.transaction(() => {
+        addBalance(w.user_id, w.amount, 'withdraw_refund', { wdId });
+        db.prepare("UPDATE withdrawals SET status='failed', reason=?, updated_at=? WHERE id=?").run(e.message, Date.now(), wdId);
+      })();
+      hooks.onBalance(w.user_id);
+      notifyAdmins(`⚠️ Вывод #${wdId} (${w.amount} ⭐) не прошёл: ${e.message}. Звёзды возвращены игроку.`);
       throw new AppError(`Вывод не прошёл: ${e.message}`);
     }
+    notifyAdmins(`⚠️ Вывод #${wdId} (${w.amount} ⭐): нет ответа StaticGram, статус неизвестен — проверь /bank`);
     throw new AppError('Вывод в обработке, если звёзды не придут — напишите в поддержку');
   }
+}
+
+async function declineWithdrawal(wdId, adminId, reason = 'отклонено администратором') {
+  const w = db.transaction(() => {
+    const w = db.prepare("SELECT * FROM withdrawals WHERE id=? AND status='pending'").get(wdId);
+    if (!w) return null;
+    addBalance(w.user_id, w.amount, 'withdraw_refund', { wdId });
+    db.prepare("UPDATE withdrawals SET status='declined', reason=?, decided_by=?, updated_at=? WHERE id=?").run(reason, adminId, Date.now(), wdId);
+    return w;
+  })();
+  if (!w) throw new AppError('Заявка уже обработана');
+  hooks.onBalance(w.user_id);
+  bot.api.sendMessage(w.user_id, `❌ Вывод ${w.amount} ⭐ отклонён, звёзды возвращены на баланс`).catch(() => {});
+  return w;
+}
+
+function notifyAdmins(text, markup) {
+  for (const a of cfg.ADMIN_IDS) bot?.api.sendMessage(a, text, markup ? { reply_markup: markup } : {}).catch(() => {});
 }
 
 // ───────────── Вывод NFT ─────────────
@@ -252,14 +316,34 @@ export function startBot() {
     const dep = db.prepare('SELECT COALESCE(SUM(amount),0) s FROM payments WHERE user_id=?').get(u.id).s;
     ctx.reply(`👤 ${u.first_name}${u.username ? ' @' + u.username : ''}\nid: ${u.id}\nБаланс: ${u.balance} ⭐\nДепозиты: ${dep} ⭐\nОсталось отыграть: ${u.wager_left} ⭐`);
   });
+  bot.callbackQuery(/^wd:(ok|no):(\d+)$/, async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return ctx.answerCallbackQuery({ text: 'Только для админа' });
+    const [, act, id] = ctx.match;
+    try {
+      if (act === 'ok') { await payoutWithdrawal(Number(id), ctx.from.id); await ctx.answerCallbackQuery({ text: 'Отправлено' }); }
+      else { await declineWithdrawal(Number(id), ctx.from.id); await ctx.answerCallbackQuery({ text: 'Отклонено, звёзды возвращены' }); }
+      await ctx.editMessageText(`${ctx.callbackQuery.message.text}\n\n${act === 'ok' ? '✅ Одобрено' : '❌ Отклонено'} — ${ctx.from.first_name}`).catch(() => {});
+    } catch (e) { await ctx.answerCallbackQuery({ text: e.message.slice(0, 190), show_alert: true }); }
+  });
+  bot.command('withdrawals', async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    const rows = db.prepare("SELECT w.*, u.username, u.first_name FROM withdrawals w JOIN users u ON u.id=w.user_id WHERE w.status='pending' ORDER BY w.id").all();
+    if (!rows.length) return ctx.reply('Заявок на вывод нет');
+    for (const w of rows.slice(0, 20)) {
+      await ctx.reply(`💸 #${w.id} · ${w.username ? '@' + w.username : w.first_name} (id ${w.user_id}) · ${w.amount} ⭐`,
+        { reply_markup: new InlineKeyboard().text('✅ Одобрить', `wd:ok:${w.id}`).text('❌ Отклонить', `wd:no:${w.id}`) });
+    }
+  });
   bot.command('stats', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return;
     const s = db.prepare(`SELECT
       (SELECT COUNT(*) FROM users) users,
       (SELECT COALESCE(SUM(amount),0) FROM payments) deposits,
       (SELECT COALESCE(SUM(balance),0) FROM users) balances,
-      (SELECT COUNT(*) FROM items WHERE owner_id IS NULL AND status='available') house`).get();
-    ctx.reply(`👥 ${s.users}\n💰 Депозиты: ${s.deposits} ⭐\n🏦 На балансах: ${s.balances} ⭐\n🎁 NFT на складе: ${s.house}\n🔗 Ретранслятор: ${businessConnectionId() ? 'подключён' : 'нет'}`);
+      (SELECT COUNT(*) FROM items WHERE owner_id IS NULL AND status='available') house,
+      (SELECT COALESCE(SUM(amount),0) FROM withdrawals WHERE status='done') wd,
+      (SELECT COUNT(*) FROM withdrawals WHERE status='pending') wdp`).get();
+    ctx.reply(`👥 ${s.users}\n💰 Депозиты: ${s.deposits} ⭐\n🏦 На балансах: ${s.balances} ⭐\n💸 Выведено: ${s.wd} ⭐ · ждут одобрения: ${s.wdp} (/withdrawals)\n🎁 NFT на складе: ${s.house}\n🔗 Ретранслятор: ${businessConnectionId() ? 'подключён' : 'нет'}`);
   });
   bot.command('sync', async (ctx) => { if (isAdmin(ctx.from.id)) { await syncGifts(); ctx.reply('Синхронизировано'); } });
 

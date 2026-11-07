@@ -112,7 +112,7 @@ const refLink = (id) => (cfg.APP_SHORT_NAME
 
 app.get('/api/config', h(() => ({
   bot: cfg.BOT_USERNAME, relayer: cfg.RELAYER_USERNAME, minBet: cfg.MIN_BET, minDeposit: cfg.MIN_DEPOSIT,
-  minWithdraw: cfg.MIN_WITHDRAW, sellRate: cfg.SELL_RATE, refPercent: cfg.REF_PERCENT, multipliers: MULTIPLIERS,
+  minWithdraw: cfg.MIN_WITHDRAW, withdrawMax: cfg.WITHDRAW_MAX, withdrawDaily: cfg.WITHDRAW_DAILY, maxPayout: cfg.MAX_PAYOUT, crashMax: cfg.CRASH_MAX, sellRate: cfg.SELL_RATE, refPercent: cfg.REF_PERCENT, multipliers: MULTIPLIERS,
   upgradeEdge: cfg.UPGRADE_EDGE, maxChance: cfg.UPGRADE_MAX_CHANCE, minChance: cfg.UPGRADE_MIN_CHANCE, dev: cfg.DEV_MODE,
 })));
 
@@ -144,11 +144,10 @@ app.post('/api/deposit', auth, h(async (req) => {
 }));
 
 app.post('/api/withdraw', auth, h(async (req) => {
-  const amount = Math.floor(Number(req.body.amount));
-  if (!(amount >= cfg.MIN_WITHDRAW)) throw new AppError(`Минимальный вывод ${cfg.MIN_WITHDRAW} ⭐`);
   if (!bot) throw new AppError('Бот не настроен (BOT_TOKEN)');
-  try { await withdrawStars(req.user.id, amount); } finally { pushBalance(req.user.id); }
-  return { ok: true, balance: getUser(req.user.id).balance };
+  let r;
+  try { r = await withdrawStars(req.user.id, req.body.amount); } finally { pushBalance(req.user.id); }
+  return { ok: true, pending: r.pending, balance: getUser(req.user.id).balance };
 }));
 
 app.post('/api/items/:id/sell', auth, h((req) => {

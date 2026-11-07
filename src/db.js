@@ -51,6 +51,13 @@ CREATE TABLE IF NOT EXISTS rounds (
   id INTEGER PRIMARY KEY, seed TEXT NOT NULL, hash TEXT NOT NULL, crash REAL NOT NULL, created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS withdrawals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, amount INTEGER NOT NULL,
+  status TEXT NOT NULL,            -- pending | queued | processing | done | declined | failed
+  reason TEXT, decided_by INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS wd_user_time ON withdrawals(user_id, created_at);
+CREATE INDEX IF NOT EXISTS wd_status ON withdrawals(status);
 `);
 
 // миграции

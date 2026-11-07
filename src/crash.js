@@ -72,10 +72,10 @@ export class CrashGame extends EventEmitter {
   placeBet(userId, { amount = 0, auto = null }) {
     if (this.phase !== 'betting') throw new AppError('Ставки на этот раунд закрыты');
     if (this.bets.has(userId)) throw new AppError('Вы уже сделали ставку');
-    amount = Math.floor(Number(amount) || 0);
-    if (amount < 0) throw new AppError('Неверная сумма');
+    if (!/^\d{1,9}$/.test(String(amount ?? ''))) throw new AppError('Неверная сумма');
+    amount = Number(amount);
     auto = auto ? Math.floor(Number(auto) * 100) / 100 : null;
-    if (auto !== null && (!(auto >= 1.01) || auto > cfg.CRASH_MAX)) throw new AppError('Автовывод от 1.01x');
+    if (auto !== null && (!(auto >= 1.01) || auto > cfg.CRASH_MAX)) throw new AppError(`Автовывод от 1.01x до ${cfg.CRASH_MAX}x`);
 
     if (amount < cfg.MIN_BET) throw new AppError(`Минимальная ставка ${cfg.MIN_BET} ⭐`);
     if (amount > cfg.MAX_BET) throw new AppError(`Максимальная ставка ${cfg.MAX_BET} ⭐`);
@@ -107,7 +107,7 @@ export class CrashGame extends EventEmitter {
   payout(userId, m, silent = false) {
     const b = this.bets.get(userId);
     b.cashout = m;
-    b.payout = Math.floor(b.value * m);
+    b.payout = Math.min(Math.floor(b.value * m), cfg.MAX_PAYOUT);
     db.transaction(() => addBalance(userId, b.payout, 'crash_win', { round: this.roundId, m }))();
     this.emit('balance', userId);
     if (b.payout >= b.value * 3 || b.payout >= 1000) this.emit('live', { userId, kind: 'crash', m, payout: b.payout });
