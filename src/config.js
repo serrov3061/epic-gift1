@@ -47,5 +47,6 @@ export const cfg = {
   // вывод больше суммы пополнений игрока — на одобрение админу (защита от «звёзд из воздуха»)
   WITHDRAW_REVIEW_OVER_DEPOSIT: process.env.WITHDRAW_REVIEW_OVER_DEPOSIT !== '0',
   RATING_PRIZES: (process.env.RATING_PRIZES || '5000,2500,1000,500,250').split(',').map(Number),
+  LOG_TZ: process.env.LOG_TZ || 'Asia/Yekaterinburg',
   GIFT_SYNC_MS: num(process.env.GIFT_SYNC_MS, 20000),
 };
