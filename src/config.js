@@ -42,7 +42,7 @@ export const cfg = {
   MIN_WITHDRAW: num(process.env.MIN_WITHDRAW, 5000),
   // 0 = без ограничения
   WITHDRAW_MAX: num(process.env.WITHDRAW_MAX, 0),
-  WITHDRAW_DAILY: num(process.env.WITHDRAW_DAILY, 0),
+  WITHDRAW_DAILY: num(process.env.WITHDRAW_DAILY, 50000), // максимум вывода в сутки на игрока
   WITHDRAW_AUTO_LIMIT: num(process.env.WITHDRAW_AUTO_LIMIT, 0),
   // вывод больше суммы пополнений игрока — на одобрение админу (защита от «звёзд из воздуха»)
   WITHDRAW_REVIEW_OVER_DEPOSIT: process.env.WITHDRAW_REVIEW_OVER_DEPOSIT !== '0',
