@@ -1,6 +1,9 @@
 import Database from 'better-sqlite3';
+import fs from 'fs';
+import path from 'path';
 import { cfg } from './config.js';
 
+fs.mkdirSync(path.dirname(path.resolve(cfg.DB_PATH)), { recursive: true });
 export const db = new Database(cfg.DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
