@@ -38,7 +38,7 @@ export const cfg = {
   SELL_RATE: num(process.env.SELL_RATE, 0.9),
   REF_PERCENT: num(process.env.REF_PERCENT, 10),
   MIN_DEPOSIT: num(process.env.MIN_DEPOSIT, 1),
-  MIN_WITHDRAW: num(process.env.MIN_WITHDRAW, 100),
+  MIN_WITHDRAW: num(process.env.MIN_WITHDRAW, 5000),
   // 0 = без ограничения
   WITHDRAW_MAX: num(process.env.WITHDRAW_MAX, 0),
   WITHDRAW_DAILY: num(process.env.WITHDRAW_DAILY, 0),
