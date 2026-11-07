@@ -225,12 +225,32 @@ export function startBot() {
   });
   bot.command('addbalance', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return;
-    const [id, amount] = ctx.match.split(/\s+/).map(Number);
-    if (!id || !amount) return ctx.reply('Формат: /addbalance <user_id> <сумма>');
+    const [who, amt] = ctx.match.trim().split(/\s+/);
+    const amount = Math.trunc(Number(amt));
+    if (!who || !amount) return ctx.reply('Формат:\n/addbalance @username 500\n/addbalance 123456789 500\n(минус — списать: /addbalance @username -100)');
+    let id = Number(who);
+    if (!id) {
+      const u = db.prepare('SELECT id FROM users WHERE username = ? COLLATE NOCASE').get(who.replace('@', ''));
+      if (!u) return ctx.reply(`Игрок ${who} не найден. Он должен хотя бы раз нажать /start или открыть игру.`);
+      id = u.id;
+    }
     ensureUser({ id });
-    db.transaction(() => { addBalance(id, amount, 'admin', { by: ctx.from.id }); if (amount > 0) addWagerReq(id, amount); })();
+    try {
+      db.transaction(() => { addBalance(id, amount, 'admin', { by: ctx.from.id }); if (amount > 0) addWagerReq(id, amount); })();
+    } catch (e) { return ctx.reply(`Не вышло: ${e.message}`); }
     hooks.onBalance(id);
-    ctx.reply(`Готово, баланс ${id}: ${getUser(id).balance} ⭐`);
+    const u = getUser(id);
+    ctx.reply(`✅ ${amount > 0 ? 'Начислено' : 'Списано'} ${Math.abs(amount)} ⭐ → ${u.username ? '@' + u.username : u.first_name} (id ${id})\nБаланс: ${u.balance} ⭐`);
+    if (amount > 0) bot.api.sendMessage(id, `🎁 Вам начислено ${amount} ⭐ на баланс Epic Gift`, { reply_markup: appButton('Играть') })
+      .catch(() => bot.api.sendMessage(id, `🎁 Вам начислено ${amount} ⭐ на баланс Epic Gift`).catch(() => {}));
+  });
+  bot.command('user', async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return;
+    const q = ctx.match.trim().replace('@', '');
+    const u = Number(q) ? getUser(Number(q)) : db.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE').get(q);
+    if (!u) return ctx.reply('Не найден. Формат: /user @username или /user 123456789');
+    const dep = db.prepare('SELECT COALESCE(SUM(amount),0) s FROM payments WHERE user_id=?').get(u.id).s;
+    ctx.reply(`👤 ${u.first_name}${u.username ? ' @' + u.username : ''}\nid: ${u.id}\nБаланс: ${u.balance} ⭐\nДепозиты: ${dep} ⭐\nОсталось отыграть: ${u.wager_left} ⭐`);
   });
   bot.command('stats', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return;

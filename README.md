@@ -27,7 +27,7 @@ npm run dev          # DEV_MODE=1, тестовые NFT на складе
 По коллекции: `/setprice Plush Pepe 15000`, список `/prices`. Без цены — `DEFAULT_NFT_PRICE`.
 
 ### Админ-команды
-`/stats`, `/prices`, `/setprice <коллекция> <звёзды>`, `/addbalance <user_id> <сумма>`, `/sync`
+`/stats`, `/prices`, `/setprice <коллекция> <звёзды>`, `/addbalance @username|id <сумма>` (минус — списать), `/user @username|id`, `/sync`
 
 ## Картинки и анимации NFT
 - Если подарок пришёл из StaticGram и у модели есть стикер — показывается он (`.tgs` распаковывается в Lottie и анимируется).
