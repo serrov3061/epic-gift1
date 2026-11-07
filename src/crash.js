@@ -107,7 +107,8 @@ export class CrashGame extends EventEmitter {
   payout(userId, m, silent = false) {
     const b = this.bets.get(userId);
     b.cashout = m;
-    b.payout = Math.min(Math.floor(b.value * m), cfg.MAX_PAYOUT);
+    b.payout = Math.floor(b.value * m);
+    if (cfg.MAX_PAYOUT > 0) b.payout = Math.min(b.payout, cfg.MAX_PAYOUT);
     db.transaction(() => addBalance(userId, b.payout, 'crash_win', { round: this.roundId, m }))();
     this.emit('balance', userId);
     if (b.payout >= b.value * 3 || b.payout >= 1000) this.emit('live', { userId, kind: 'crash', m, payout: b.payout });

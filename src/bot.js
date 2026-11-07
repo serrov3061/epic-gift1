@@ -58,7 +58,7 @@ export async function withdrawStars(userId, rawAmount) {
   if (!/^\d{1,9}$/.test(String(rawAmount ?? ''))) throw new AppError('Неверная сумма');
   const amount = Number(rawAmount);
   if (amount < cfg.MIN_WITHDRAW) throw new AppError(`Минимальный вывод ${cfg.MIN_WITHDRAW} ⭐`);
-  if (amount > cfg.WITHDRAW_MAX) throw new AppError(`Максимум за один вывод — ${cfg.WITHDRAW_MAX} ⭐`);
+  if (cfg.WITHDRAW_MAX > 0 && amount > cfg.WITHDRAW_MAX) throw new AppError(`Максимум за один вывод — ${cfg.WITHDRAW_MAX} ⭐`);
   const u = getUser(userId);
   if (!u) throw new AppError('Пользователь не найден');
   if (u.wager_left > 0) throw new AppError(`Сначала отыграйте ещё ${u.wager_left} ⭐ в ставках — так защищаемся от отмыва`);
@@ -66,16 +66,18 @@ export async function withdrawStars(userId, rawAmount) {
   pendingWithdraw.add(userId);
   try {
     const st = wdStats(userId);
-    if (st.day + amount > cfg.WITHDRAW_DAILY) throw new AppError(`Лимит вывода — ${cfg.WITHDRAW_DAILY} ⭐ в сутки. Сегодня доступно ещё ${Math.max(0, cfg.WITHDRAW_DAILY - st.day)} ⭐`);
+    if (cfg.WITHDRAW_DAILY > 0 && st.day + amount > cfg.WITHDRAW_DAILY) throw new AppError(`Лимит вывода — ${cfg.WITHDRAW_DAILY} ⭐ в сутки. Сегодня доступно ещё ${Math.max(0, cfg.WITHDRAW_DAILY - st.day)} ⭐`);
     // списываем сразу (атомарно, с проверкой баланса) и создаём заявку
-    const review = amount > cfg.WITHDRAW_AUTO_LIMIT || st.wd + amount > st.dep;
+    const overLimit = cfg.WITHDRAW_AUTO_LIMIT > 0 && amount > cfg.WITHDRAW_AUTO_LIMIT;
+    const overDeposit = cfg.WITHDRAW_REVIEW_OVER_DEPOSIT && st.wd + amount > st.dep;
+    const review = overLimit || overDeposit;
     const wdId = db.transaction(() => {
       addBalance(userId, -amount, 'withdraw');
       return db.prepare('INSERT INTO withdrawals(user_id,amount,status,created_at) VALUES(?,?,?,?)')
         .run(userId, amount, review ? 'pending' : 'queued', Date.now()).lastInsertRowid;
     })();
     if (review) {
-      const reason = amount > cfg.WITHDRAW_AUTO_LIMIT ? `больше ${cfg.WITHDRAW_AUTO_LIMIT} ⭐` : 'больше суммы депозитов';
+      const reason = overDeposit ? 'выводит больше, чем пополнил' : `больше ${cfg.WITHDRAW_AUTO_LIMIT} ⭐`;
       notifyAdmins(
         `💸 Заявка на вывод #${wdId}\n${userTag(u)}\nСумма: ${amount} ⭐ (${reason})\n`
         + `Депозиты: ${st.dep} ⭐ · Уже выведено: ${st.wd} ⭐\nБаланс после: ${getUser(userId).balance} ⭐`,
