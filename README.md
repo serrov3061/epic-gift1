@@ -1,0 +1,54 @@
+# Epic Gift — бот-казино подарков для StaticGram
+
+Mini App с режимами **Ракетка** (crash) и **Улучшение** (апгрейдер), инвентарём NFT, кошельком (звёзды XTR), рефералкой и недельным рейтингом. Интерфейс в стиле iOS, чёрно-фиолетовая тема, живые Lottie-анимации NFT, лендинг для входа не из StaticGram.
+
+## Быстрый тест без бота
+```bash
+npm install
+npm run dev          # DEV_MODE=1, тестовые NFT на складе
+# откройте http://localhost:3000/?dev=1  (?dev=2 — второй игрок)
+```
+На главной будет кнопка «DEV: +1000 ⭐».
+
+## Запуск в продакшене
+1. В StaticGram: @BotFather → `/newbot` → токен. Опционально `/newapp` (short_name → `APP_SHORT_NAME`).
+2. `cp .env.example .env` и заполните `BOT_TOKEN`, `BOT_USERNAME`, `WEBAPP_URL` (обязательно HTTPS), `ADMIN_IDS`, `RELAYER_USERNAME`.
+3. `npm install && npm start` (Node 20+). За nginx/Caddy с HTTPS, проксируйте и `/ws` (WebSocket).
+4. Бот сам выставит кнопку меню «Играть» на `WEBAPP_URL`.
+
+### Приём NFT (как @giftbackpack на скринах)
+1. Аккаунт-ретранслятор (Premium) → Настройки → StaticGram Business → Чат-боты → добавить вашего бота, включить права на **просмотр подарков и звёзд** и **передачу подарков**.
+2. Аккаунт-ретранслятор должен быть в `ADMIN_IDS` — бот сохранит `business_connection_id` и начнёт синхронизацию (каждые 20 сек, `/sync` вручную).
+3. Игрок дарит улучшенный подарок ретранслятору → он появляется у него в инвентаре.
+   Подарки от админов уходят на **склад** — это цели апгрейдера.
+4. Вывод NFT: `transferGift` с ретранслятора игроку (комиссию за передачу платит ретранслятор).
+
+### Цены NFT
+По коллекции: `/setprice Plush Pepe 15000`, список `/prices`. Без цены — `DEFAULT_NFT_PRICE`.
+
+### Админ-команды
+`/stats`, `/prices`, `/setprice <коллекция> <звёзды>`, `/addbalance <user_id> <сумма>`, `/sync`
+
+## Картинки и анимации NFT
+- Если подарок пришёл из StaticGram и у модели есть стикер — показывается он (`.tgs` распаковывается в Lottie и анимируется).
+- Иначе используется рендер коллекции с Fragment по slug (`nft.fragment.com/gift/<slug>.webp` и `.lottie.json`, проксируется сервером из‑за CORS).
+- Если ничего не загрузилось — монограмма коллекции на фоне цвета подарка.
+- Анимации играют только в видимой области (IntersectionObserver), уважается `prefers-reduced-motion`.
+
+## Механика
+- **Ракетка:** раунд = 8 с ставок → полёт `m(t)=e^(0.00006·t)` → краш. Ставка звёздами и/или NFT (NFT по оценке уходит на склад), выплата звёздами. Автовывод. Provably fair: до раунда публикуется `sha256(seed)`, после — `seed`, краш = `HMAC_SHA256(seed,"epic-gift-rocket")` → `P(≥x) = (1−edge)/x`.
+- **Улучшение:** ставка (звёзды + NFT) → цель: NFT со склада или множитель x1.5…x20. Шанс = `ставка / цель × (1 − UPGRADE_EDGE)`, от 1% до 80%.
+- **Кошелёк:** пополнение `createInvoiceLink` (XTR) + `openInvoice`; вывод звёзд — расширение StaticGram `withdrawStarBalance` (с баланса бота).
+- **Рефералка:** `REF_PERCENT`% с каждого пополнения друга (ссылка `?startapp=ref<id>` или `/start ref<id>`).
+- **Рейтинг:** сумма ставок за неделю (пн 00:00 UTC). Призы в UI — выдаются вручную через `/addbalance`.
+
+## Структура
+```
+src/server.js   HTTP API + WebSocket + раздача public/
+src/crash.js    движок ракетки
+src/upgrade.js  апгрейдер
+src/bot.js      бот: платежи, синхронизация NFT, вывод, админка
+src/db.js       SQLite (better-sqlite3)
+src/auth.js     проверка initData
+public/         Mini App (index.html, app.css, app.js)
+```
