@@ -116,8 +116,14 @@ const refLink = (id) => (cfg.APP_SHORT_NAME
 
 app.get('/api/config', h(() => ({
   bot: cfg.BOT_USERNAME, relayer: cfg.RELAYER_USERNAME, minBet: cfg.MIN_BET, minDeposit: cfg.MIN_DEPOSIT,
-  minWithdraw: cfg.MIN_WITHDRAW, withdrawMax: cfg.WITHDRAW_MAX, withdrawDaily: cfg.WITHDRAW_DAILY, maxPayout: cfg.MAX_PAYOUT, crashMax: cfg.CRASH_MAX, crashMin: cfg.CRASH_MIN, sellRate: cfg.SELL_RATE, refPercent: cfg.REF_PERCENT, multipliers: MULTIPLIERS,
-  upgradeEdge: cfg.UPGRADE_EDGE, maxChance: cfg.UPGRADE_MAX_CHANCE, minChance: cfg.UPGRADE_MIN_CHANCE, dev: cfg.DEV_MODE,
+  minWithdraw: cfg.MIN_WITHDRAW, withdrawMax: cfg.WITHDRAW_MAX, withdrawDaily: cfg.WITHDRAW_DAILY, maxPayout: cfg.MAX_PAYOUT, crashMax: cfg.CRASH_MAX, sellRate: cfg.SELL_RATE, refPercent: cfg.REF_PERCENT, multipliers: MULTIPLIERS,
+  upgradeEdge: cfg.UPGRADE_EDGE, bigStep: cfg.UPGRADE_BIG_STEP, bigMax: cfg.UPGRADE_BIG_MAX, multMax: cfg.UPGRADE_MULT_MAX, crashEdge: cfg.CRASH_EDGE, maxBet: cfg.MAX_BET, maxChance: cfg.UPGRADE_MAX_CHANCE, minChance: cfg.UPGRADE_MIN_CHANCE, dev: cfg.DEV_MODE,
+})));
+
+// Честность: публикуем seed/hash прошедших раундов, чтобы любой мог перепроверить
+app.get('/api/fair', h(() => ({
+  edge: cfg.CRASH_EDGE, crashMax: cfg.CRASH_MAX, salt: 'epic-gift-rocket',
+  rounds: db.prepare('SELECT id, seed, hash, crash, created_at FROM rounds ORDER BY id DESC LIMIT 30').all(),
 })));
 
 app.get('/api/me', auth, h((req) => {
@@ -190,14 +196,11 @@ app.post('/api/crash/bet', auth, h((req) => crash.placeBet(req.user.id, req.body
 app.post('/api/crash/cashout', auth, h((req) => crash.cashout(req.user.id)));
 
 app.post('/api/upgrade', auth, h((req) => {
-  const uid = req.user.id;
-  const r = doUpgrade(uid, req.body);
+  const r = doUpgrade(req.user.id, req.body);
   shopCache.at = 0;
-  // результат раскрываем после того, как колесо докрутится (~5 с): баланс в других вкладках и лента Live — с задержкой
-  const REVEAL_MS = 5200;
-  setTimeout(() => pushBalance(uid), REVEAL_MS);
-  if (r.win && r.targetValue >= r.inputValue * 3) setTimeout(() => pushLive({ userId: uid, kind: 'upgrade', item: r.item, stars: r.stars, chance: r.chance }), REVEAL_MS);
-  return { ...r, balance: getUser(uid).balance };
+  pushBalance(req.user.id);
+  if (r.win && r.targetValue >= r.inputValue * 3) pushLive({ userId: req.user.id, kind: 'upgrade', item: r.item, stars: r.stars, chance: r.chance });
+  return { ...r, balance: getUser(req.user.id).balance };
 }));
 
 let ratingCache = { at: 0, rows: [] };

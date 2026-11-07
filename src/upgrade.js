@@ -4,9 +4,27 @@ import { db, AppError, addBalance, itemValue, logTx, publicItem, consumeWager } 
 
 export const MULTIPLIERS = [1.5, 2, 3, 5, 10, 20];
 
-export function calcChance(inputValue, targetValue) {
+/**
+ * Преимущество казино в апгрейде. Для обычных ставок = UPGRADE_EDGE.
+ * Для крупных выплат растёт: чем больше (цель − ставка) и чем выше множитель, тем ниже шанс,
+ * чтобы «35к → 320к» не залетало слишком часто. Та же формула считается в интерфейсе — шанс на экране = реальный.
+ */
+export function upgradeEdge(inputValue, targetValue) {
+  if (!(inputValue > 0) || !(targetValue > inputValue)) return cfg.UPGRADE_EDGE;
+  const big = Math.min(cfg.UPGRADE_BIG_MAX, 0.05 * Math.log2(1 + (targetValue - inputValue) / cfg.UPGRADE_BIG_STEP));
+  const m = targetValue / inputValue;
+  const mult = m > 5 ? Math.min(cfg.UPGRADE_MULT_MAX, 0.03 * (Math.log2(m / 5) + 1)) : 0;
+  return Math.min(0.6, cfg.UPGRADE_EDGE + big + mult);
+}
+
+/** Шанс без ограничения сверху (для проверки лимита) */
+export function rawChance(inputValue, targetValue) {
   if (!(inputValue > 0) || !(targetValue > inputValue)) return 0;
-  return Math.min(cfg.UPGRADE_MAX_CHANCE, (inputValue / targetValue) * (1 - cfg.UPGRADE_EDGE));
+  return (inputValue / targetValue) * (1 - upgradeEdge(inputValue, targetValue));
+}
+
+export function calcChance(inputValue, targetValue) {
+  return Math.min(cfg.UPGRADE_MAX_CHANCE, rawChance(inputValue, targetValue));
 }
 
 /**
@@ -39,13 +57,13 @@ export function doUpgrade(userId, { amount = 0, target }) {
     if (cfg.MAX_PAYOUT > 0 && target.type === 'mult' && targetValue > cfg.MAX_PAYOUT) throw new AppError(`Максимальный выигрыш ${cfg.MAX_PAYOUT} ⭐ — уменьшите ставку или множитель`);
     const chance = calcChance(inputValue, targetValue);
     if (chance < cfg.UPGRADE_MIN_CHANCE) throw new AppError('Слишком маленький шанс — добавьте ставку');
-    if ((inputValue / targetValue) * (1 - cfg.UPGRADE_EDGE) > cfg.UPGRADE_MAX_CHANCE) {
+    if (rawChance(inputValue, targetValue) > cfg.UPGRADE_MAX_CHANCE) {
       throw new AppError(`Шанс выше ${Math.round(cfg.UPGRADE_MAX_CHANCE * 100)}% — выберите цель дороже`);
     }
 
     const roll = crypto.randomInt(0, 1_000_000) / 1_000_000;
     const win = roll < chance;
-    logTx(userId, 'wager', inputValue, { game: 'upgrade', chance, roll, win });
+    logTx(userId, 'wager', inputValue, { game: 'upgrade', chance, roll, win, edge: upgradeEdge(inputValue, targetValue) });
 
     if (win) {
       if (targetItem) db.prepare('UPDATE items SET owner_id=? WHERE id=?').run(userId, targetItem.id);
