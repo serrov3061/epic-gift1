@@ -90,7 +90,7 @@ export class CrashGame extends EventEmitter {
     bet.name = u.first_name;
     bet.photo = u.photo_url;
     this.bets.set(userId, bet);
-    this.emit('state');
+    this.emit('bet', { uid: userId, name: bet.name, photo: bet.photo, value: bet.value, cashout: null, payout: 0 });
     this.emit('balance', userId);
     return bet;
   }
@@ -111,11 +111,13 @@ export class CrashGame extends EventEmitter {
     db.transaction(() => addBalance(userId, b.payout, 'crash_win', { round: this.roundId, m }))();
     this.emit('balance', userId);
     if (b.payout >= b.value * 3 || b.payout >= 1000) this.emit('live', { userId, kind: 'crash', m, payout: b.payout });
-    if (!silent) this.emit('state');
+    if (!silent) this.emit('cash', { uid: userId, cashout: m, payout: b.payout });
     return { cashout: m, payout: b.payout };
   }
 
+  static LIST_LIMIT = 100;
   snapshot() {
+    const all = [...this.bets];
     return {
       type: 'crash',
       phase: this.phase,
@@ -128,9 +130,11 @@ export class CrashGame extends EventEmitter {
       seed: this.phase === 'crashed' ? this.seed : null,
       history: this.history,
       serverNow: Date.now(),
-      bets: [...this.bets].map(([uid, b]) => ({
+      betsTotal: all.length,
+      betsSum: all.reduce((s, [, b]) => s + b.value, 0),
+      bets: all.map(([uid, b]) => ({
         uid, name: b.name, photo: b.photo, value: b.value, cashout: b.cashout, payout: b.payout,
-      })).sort((a, b) => b.value - a.value),
+      })).sort((a, b) => b.value - a.value).slice(0, CrashGame.LIST_LIMIT),
     };
   }
 }

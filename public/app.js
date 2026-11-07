@@ -11,6 +11,11 @@ const fmt = (n) => Math.floor(n).toLocaleString('ru-RU');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const K = 0.00006;
 const multAt = (ms) => Math.max(1, Math.floor(100 * Math.exp(K * Math.max(0, ms))) / 100);
+// Слабое устройство или «уменьшить движение» → без Lottie, меньше частиц
+const LOW_END = matchMedia('(prefers-reduced-motion: reduce)').matches
+  || (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 3;
+if (LOW_END) document.documentElement.classList.add('low-end');
+const MAX_LOTTIE = LOW_END ? 0 : 10;
 const ic = (name, cls = '') => `<svg class="ic ${cls}"><use href="#i-${name}"/></svg>`;
 const STAR = ic('star', 'star');
 
@@ -58,7 +63,8 @@ const fx = { c: $('#fx'), parts: [], run: false };
 fx.ctx = fx.c.getContext('2d');
 function fxResize() { const d = Math.min(2, devicePixelRatio || 1); fx.c.width = innerWidth * d; fx.c.height = innerHeight * d; fx.ctx.setTransform(d, 0, 0, d, 0, 0); }
 fxResize(); addEventListener('resize', fxResize);
-function burst(x, y, { n = 90, colors = ['#c4b5fd', '#a855f7', '#e879f9', '#ffc53d', '#fff'], power = 9, gravity = .28 } = {}) {
+function burst(x, y, { n: n0 = 90, colors = ['#c4b5fd', '#a855f7', '#e879f9', '#ffc53d', '#fff'], power = 9, gravity = .28 } = {}) {
+  const n = LOW_END ? Math.ceil(n0 / 3) : n0;
   for (let i = 0; i < n; i++) {
     const a = Math.random() * Math.PI * 2, v = (.35 + Math.random()) * power;
     fx.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - power * .45, g: gravity, life: 1, d: .008 + Math.random() * .01,
@@ -123,8 +129,9 @@ const lotObs = 'IntersectionObserver' in window ? new IntersectionObserver((ents
 }) : null;
 function hydrate(root = document) {
   for (const a of lottieLive) if (!a.wrapper?.isConnected) { a.destroy(); lottieLive.delete(a); }
-  if (!window.lottie) return;
+  if (!window.lottie || !MAX_LOTTIE) return;
   $$('.nft-media[data-anim]:not([data-hyd])', root).forEach(async (box) => {
+    if (lottieLive.size >= MAX_LOTTIE) return; // остальные остаются статичной картинкой
     box.dataset.hyd = 1;
     const url = box.dataset.anim;
     try {
@@ -132,7 +139,8 @@ function hydrate(root = document) {
       const data = await lottieData.get(url);
       if (!box.isConnected) return;
       const holder = document.createElement('div'); holder.className = 'lot'; box.appendChild(holder);
-      const anim = lottie.loadAnimation({ container: holder, renderer: 'svg', loop: true, autoplay: true, animationData: structuredClone(data), rendererSettings: { preserveAspectRatio: 'xMidYMid meet', progressiveLoad: true } });
+      const anim = lottie.loadAnimation({ container: holder, renderer: 'svg', loop: true, autoplay: true, animationData: structuredClone(data), rendererSettings: { preserveAspectRatio: 'xMidYMid meet', progressiveLoad: true, hideOnTransparent: true } });
+      anim.setSubframe(false); // 30 fps вместо 60 — вдвое меньше нагрузки, на глаз не видно
       anim.addEventListener('DOMLoaded', () => box.classList.add('has-lottie'));
       lottieLive.add(anim); holder._anim = anim; lotObs?.observe(holder);
     } catch { lottieData.delete(url); }
@@ -188,7 +196,7 @@ function go(name) {
   if (name === 'rating') loadRating();
   if (name === 'upgrade') { loadShop(); requestAnimationFrame(() => moveInd($('#upSeg'), $('#upSeg .seg-ind'), $('#upSeg .active'))); }
   if (name === 'inventory') renderInventory();
-  if (name === 'rocket') resizeCanvas();
+  if (name === 'rocket') { resizeCanvas(); renderBets(); }
   hydrate();
 }
 $$('.tabbar button').forEach((b) => b.addEventListener('click', () => go(b.dataset.tab)));
@@ -364,10 +372,10 @@ $('#homeShowcase').addEventListener('click', (e) => {
 const canvas = $('#rkCanvas');
 const ctx = canvas.getContext('2d');
 let W = 0, H = 0, DPR = 1;
-const layers = [0.25, 0.55, 1].map((depth) => Array.from({ length: 40 }, () => ({ x: Math.random(), y: Math.random(), r: (Math.random() * 1.1 + .3) * depth + .2, d: depth, tw: Math.random() * 6 })));
+const layers = [0.25, 0.55, 1].map((depth) => Array.from({ length: LOW_END ? 14 : 40 }, () => ({ x: Math.random(), y: Math.random(), r: (Math.random() * 1.1 + .3) * depth + .2, d: depth, tw: Math.random() * 6 })));
 const smoke = [];
 function resizeCanvas() {
-  DPR = Math.min(2, devicePixelRatio || 1);
+  DPR = Math.min(LOW_END ? 1.25 : 2, devicePixelRatio || 1);
   W = canvas.clientWidth; H = canvas.clientHeight;
   canvas.width = W * DPR; canvas.height = H * DPR;
 }
@@ -397,16 +405,31 @@ function onCrashState(st) {
     $('#rkHistory').innerHTML = st.history.map((m, i) => `<span class="hchip ${hClass(m)} ${i === 0 && isNew ? 'new' : ''}">${m.toFixed(2)}x</span>`).join('');
   }
   if (st.roundId !== seenRound) { seenRound = st.roundId; seenBets = new Set(); }
-  renderBets();
+  scheduleBets();
   $('#rkFair').textContent = st.phase === 'crashed'
     ? `Раунд #${st.roundId} · seed ${st.seed} · краш = HMAC_SHA256(seed, "epic-gift-rocket")`
     : `Раунд #${st.roundId} · hash ${st.hash}`;
 }
+function onCrashDelta(m) {
+  const st = S.crash; if (!st || m.roundId !== st.roundId) return;
+  for (const b of m.bets) if (!st.bets.some((x) => x.uid === b.uid)) st.bets.push(b);
+  for (const c of m.cash) { const b = st.bets.find((x) => x.uid === c.uid); if (b) { b.cashout = c.cashout; b.payout = c.payout; } }
+  st.bets.sort((a, b) => b.value - a.value);
+  st.betsTotal = Math.max(m.betsTotal || 0, st.bets.length);
+  scheduleBets();
+}
+let betsRaf = 0;
+const scheduleBets = () => { if (!betsRaf) betsRaf = requestAnimationFrame(() => { betsRaf = 0; renderBets(); }); };
+const BETS_SHOWN = 40;
 function renderBets() {
-  const st = S.crash; if (!st) return;
+  const st = S.crash; if (!st || current !== 'rocket') return;
   const live = st.phase === 'flying' ? multAt(sNow() - st.startAt) : 0;
-  tweenNum($('#rkBetsCount'), st.bets.length, 300);
-  $('#rkBets').innerHTML = st.bets.length ? st.bets.map((b) => {
+  tweenNum($('#rkBetsCount'), st.betsTotal || st.bets.length, 300);
+  const mine = myBet();
+  const shown = st.bets.slice(0, BETS_SHOWN);
+  if (mine && !shown.includes(mine)) shown.unshift(mine); // свою ставку видно всегда
+  const more = (st.betsTotal || st.bets.length) - shown.length;
+  $('#rkBets').innerHTML = shown.length ? shown.map((b) => {
     const won = !!b.cashout, lost = st.phase === 'crashed' && !b.cashout;
     const fresh = !seenBets.has(b.uid); seenBets.add(b.uid);
     const right = won ? `<small>x${b.cashout.toFixed(2)} · +${fmt(b.payout)}</small>`
@@ -415,7 +438,7 @@ function renderBets() {
       ${avatarHtml(b.name, b.photo)}
       <div class="b-mid"><b>${esc(b.name)}${b.uid === S.me?.id ? '<span class="you">ВЫ</span>' : ''}</b><small>ставка ${STAR}${fmt(b.value)}</small></div>
       <div class="b-right"><b>${STAR}${fmt(won ? b.payout : b.value)}</b>${right}</div></div>`;
-  }).join('') : '<div class="empty-row">Пока никто не поставил — будь первым</div>';
+  }).join('') + (more > 0 ? `<div class="empty-row">и ещё ${fmt(more)} ставок</div>` : '') : '<div class="empty-row">Пока никто не поставил — будь первым</div>';
 }
 const betInput = $('#betAmount');
 $$('.round-btn').forEach((b) => b.addEventListener('click', () => { haptic.sel(); betInput.value = Math.max(0, (Number(betInput.value) || 0) + Number(b.dataset.step)); }));
@@ -478,7 +501,7 @@ let boom = null, lastInt = 1;
 function frame(t) {
   requestAnimationFrame(frame);
   const st = S.crash;
-  if (!st || current !== 'rocket') return;
+  if (!st || current !== 'rocket' || document.hidden) return;
   if (!W) resizeCanvas();
   const now = sNow();
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -523,7 +546,7 @@ function frame(t) {
     ctx.strokeStyle = lg; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.shadowColor = crashed ? '#fb7185' : '#a855f7'; ctx.shadowBlur = crashed ? 4 : 18; ctx.stroke(); ctx.shadowBlur = 0;
   }
   // дым за ракетой
-  if (flying && Math.random() < .9) smoke.push({ x: tip[0] - Math.cos(ang) * 18, y: tip[1] - Math.sin(ang) * 18, r: 3 + Math.random() * 3, a: .5, vx: -Math.cos(ang) * 1.2 + (Math.random() - .5), vy: -Math.sin(ang) * 1.2 + (Math.random() - .5) });
+  if (flying && smoke.length < (LOW_END ? 25 : 80) && Math.random() < .9) smoke.push({ x: tip[0] - Math.cos(ang) * 18, y: tip[1] - Math.sin(ang) * 18, r: 3 + Math.random() * 3, a: .5, vx: -Math.cos(ang) * 1.2 + (Math.random() - .5), vy: -Math.sin(ang) * 1.2 + (Math.random() - .5) });
   for (let i = smoke.length - 1; i >= 0; i--) {
     const p = smoke[i]; p.x += p.vx - speed * .5; p.y += p.vy + speed * .2; p.r += .35; p.a -= .012;
     if (p.a <= 0) { smoke.splice(i, 1); continue; }
@@ -561,7 +584,7 @@ function frame(t) {
     if (Math.floor(m) > lastInt) { lastInt = Math.floor(m); mEl.classList.remove('pop'); void mEl.offsetWidth; mEl.classList.add('pop'); haptic.sel(); }
   } else { mEl.textContent = `${st.crash.toFixed(2)}x`; mEl.style.color = ''; $('#rkSub').textContent = 'Улетела'; }
   updateAction();
-  if (flying && Math.floor(now / 250) !== frame.tick) { frame.tick = Math.floor(now / 250); renderBets(); }
+  if (flying && Math.floor(now / 400) !== frame.tick) { frame.tick = Math.floor(now / 400); renderBets(); }
 }
 requestAnimationFrame(frame);
 
@@ -779,6 +802,7 @@ function connectWS() {
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
     if (m.type === 'crash') onCrashState(m);
+    else if (m.type === 'crash_delta') onCrashDelta(m);
     else if (m.type === 'balance') setBalance(m.balance);
     else if (m.type === 'inventory') { loadMe(); island('Новый подарок в инвентаре', 'ok', 'gift'); }
     else if (m.type === 'online') setOnline(m.n);

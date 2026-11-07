@@ -39,7 +39,7 @@ input[type=number] { -moz-appearance: textfield; }
   content: ""; position: absolute; inset: 0; opacity: .06; mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
-.aurora i { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .55; animation: drift 18s ease-in-out infinite alternate; }
+.aurora i { position: absolute; border-radius: 50%; filter: blur(60px); opacity: .55; animation: drift 18s ease-in-out infinite alternate; will-change: transform; transform: translateZ(0); }
 .aurora i:nth-child(1) { width: 380px; height: 380px; background: #6d28d9; top: -140px; left: -120px; }
 .aurora i:nth-child(2) { width: 300px; height: 300px; background: #a21caf; top: 30%; right: -160px; opacity: .3; animation-duration: 24s; }
 .aurora i:nth-child(3) { width: 340px; height: 340px; background: #312e81; bottom: -160px; left: 10%; opacity: .45; animation-duration: 21s; }
@@ -106,7 +106,7 @@ input[type=number] { -moz-appearance: textfield; }
 .sec-head { display: flex; align-items: center; justify-content: space-between; margin: 26px 2px 12px; }
 .sec-head h3 { margin: 0; font-size: 20px; font-weight: 750; letter-spacing: -.3px; }
 .pill-count { min-width: 28px; padding: 3px 9px; border-radius: 999px; background: var(--s2); border: 1px solid var(--stroke); font-size: 13px; font-weight: 700; text-align: center; color: var(--t2); }
-.panel { background: var(--s1); border: 1px solid var(--stroke); border-radius: var(--r-lg); padding: 16px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.panel { background: var(--s1); border: 1px solid var(--stroke); border-radius: var(--r-lg); padding: 16px; }
 .reveal { animation: rise .55s var(--ease) both; animation-delay: calc(var(--i, 0) * 45ms); }
 @keyframes rise { from { opacity: 0; transform: translateY(14px) scale(.97); } }
 @keyframes popIn { from { opacity: 0; transform: scale(.6); } }
@@ -120,7 +120,7 @@ input[type=number] { -moz-appearance: textfield; }
 .live-track::-webkit-scrollbar { display: none; }
 .live-item { flex: none; position: relative; width: 66px; height: 70px; border-radius: 16px; overflow: hidden; border: 1px solid var(--stroke2); display: grid; place-items: center; animation: liveIn .6s var(--spring); }
 .live-item .nft-media { width: 54px; height: 54px; margin-top: -8px; }
-.live-item span { position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); font-size: 10.5px; font-weight: 800; padding: 1px 6px; border-radius: 6px; background: rgba(0, 0, 0, .5); backdrop-filter: blur(6px); white-space: nowrap; }
+.live-item span { position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); font-size: 10.5px; font-weight: 800; padding: 1px 6px; border-radius: 6px; background: rgba(0, 0, 0, .6); white-space: nowrap; }
 .live-item.rk { background: radial-gradient(circle at 50% 30%, #7c3aed, #1e1036); }
 .live-item.rk .ic { width: 30px; height: 30px; margin-top: -10px; color: #fff; }
 @keyframes liveIn { from { opacity: 0; transform: translateX(-30px) scale(.6); } }
@@ -158,7 +158,7 @@ input[type=number] { -moz-appearance: textfield; }
 .hc-rocket-svg .flame { transform-origin: 60px 86px; animation: flame .12s ease-in-out infinite alternate; }
 @keyframes rocketFloat { 50% { transform: translate(6px, -10px) rotate(3deg); } }
 @keyframes flame { to { transform: scaleY(1.25) scaleX(.85); } }
-.mx { position: absolute; font-size: 12px; font-weight: 800; padding: 3px 8px; border-radius: 9px; background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .22); backdrop-filter: blur(6px); animation: chip 5s ease-in-out infinite; }
+.mx { position: absolute; font-size: 12px; font-weight: 800; padding: 3px 8px; border-radius: 9px; background: rgba(255, 255, 255, .16); border: 1px solid rgba(255, 255, 255, .22); animation: chip 5s ease-in-out infinite; }
 .m1 { top: 22px; right: 18px; } .m2 { top: 18px; left: 8px; animation-delay: -1.6s; } .m3 { bottom: 52px; right: 8px; animation-delay: -3.2s; color: #fde68a; }
 @keyframes chip { 50% { transform: translateY(-7px); } }
 .hc-ring { position: absolute; width: 138px; height: 138px; animation: spin 14s linear infinite; }
@@ -199,7 +199,7 @@ input[type=number] { -moz-appearance: textfield; }
 .nft:hover .nft-media { transform: scale(1.06) translateY(-2px); }
 .nft .n-num { position: absolute; top: 7px; right: 8px; font-size: 10px; font-weight: 700; color: rgba(255,255,255,.65); }
 .nft .n-name { font-size: 12.5px; font-weight: 700; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
-.nft .n-val { display: inline-flex; align-items: center; gap: 3px; margin-top: 5px; padding: 3px 8px; border-radius: 9px; font-size: 12px; font-weight: 800; background: rgba(0, 0, 0, .38); backdrop-filter: blur(6px); font-variant-numeric: tabular-nums; }
+.nft .n-val { display: inline-flex; align-items: center; gap: 3px; margin-top: 5px; padding: 3px 8px; border-radius: 9px; font-size: 12px; font-weight: 800; background: rgba(0, 0, 0, .42); font-variant-numeric: tabular-nums; }
 .nft .n-val .ic { width: 12px; height: 12px; }
 .nft .n-ch { position: absolute; top: 7px; left: 8px; font-size: 11px; font-weight: 800; padding: 2px 6px; border-radius: 7px; background: rgba(0, 0, 0, .4); }
 .nft.sel { box-shadow: 0 0 0 2px #fff, 0 0 28px rgba(196, 181, 253, .7); transform: translateY(-3px); }
@@ -516,3 +516,15 @@ input[type=number] { -moz-appearance: textfield; }
 .wager-note .ic { width: 22px; height: 22px; color: #fde68a; }
 .wager-note b { display: block; font-size: 14.5px; color: #fde68a; }
 .wager-note small { display: block; font-size: 12.5px; color: var(--t2); margin-top: 2px; line-height: 1.35; }
+
+/* ─────────── производительность ─────────── */
+.hero-card, .bet, .step { contain: layout paint; }
+.nft { contain: layout; }
+#rkCanvas, .wheel-svg { will-change: contents; }
+/* слабые устройства: без размытия фона и вечных анимаций-украшений */
+.low-end .aurora i { animation: none; filter: blur(40px); }
+.low-end .aurora::after, .low-end .hero-card::after, .low-end .shine, .low-end .preview::before, .low-end .hc-stars { animation: none; }
+.low-end .topbar, .low-end .tabbar, .low-end .backdrop, .low-end .rk-online, .low-end .rt-me .bet, .low-end #island { backdrop-filter: none; -webkit-backdrop-filter: none; }
+.low-end .topbar { background: rgba(5, 4, 10, .96); }
+.low-end .tabbar { background: rgba(18, 12, 30, .97); }
+.low-end .w-arc, .low-end .rr-fg { filter: none; }

@@ -6,6 +6,9 @@ import { cfg } from './config.js';
 fs.mkdirSync(path.dirname(path.resolve(cfg.DB_PATH)), { recursive: true });
 export const db = new Database(cfg.DB_PATH);
 db.pragma('journal_mode = WAL');
+db.pragma('synchronous = NORMAL'); // безопасно с WAL, запись в разы быстрее
+db.pragma('cache_size = -16000');  // 16 МБ кэша
+db.pragma('temp_store = MEMORY');
 db.pragma('foreign_keys = ON');
 
 db.exec(`
@@ -39,6 +42,8 @@ CREATE TABLE IF NOT EXISTS tx (
   meta TEXT, created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS tx_type_time ON tx(type, created_at);
+CREATE INDEX IF NOT EXISTS users_ref ON users(ref_by);
+CREATE INDEX IF NOT EXISTS users_username ON users(username COLLATE NOCASE);
 CREATE TABLE IF NOT EXISTS payments (
   charge_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL, amount INTEGER NOT NULL, created_at INTEGER NOT NULL
 );

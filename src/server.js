@@ -1,5 +1,6 @@
 import express from 'express';
 import zlib from 'zlib';
+import compression from 'compression';
 import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -17,9 +18,11 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-app.use(express.json({ limit: '100kb' }));
-app.use(express.static(path.join(__dirname, '../public'), { maxAge: cfg.DEV_MODE ? 0 : '1h' }));
-app.get('/vendor/lottie.js', (req, res) => res.sendFile(path.join(__dirname, '../node_modules/lottie-web/build/player/lottie_light.min.js')));
+app.disable('x-powered-by');
+app.use(compression({ threshold: 1024 })); // gzip: app.js/css/lottie в 3–5 раз меньше
+app.use(express.json({ limit: '20kb' }));
+app.use(express.static(path.join(__dirname, '../public'), { maxAge: cfg.DEV_MODE ? 0 : '10m' }));
+app.get('/vendor/lottie.js', (req, res) => res.sendFile(path.join(__dirname, '../node_modules/lottie-web/build/player/lottie_light.min.js'), { maxAge: '30d', immutable: true }));
 
 // ───────────── auth ─────────────
 function authUser(initData) {
@@ -81,10 +84,21 @@ function pushOnline() {
 
 const crash = new CrashGame();
 let stateTimer = null;
-crash.on('state', () => { // склеиваем частые обновления
+crash.on('state', () => { // смена фазы — полный снимок
   if (stateTimer) return;
-  stateTimer = setTimeout(() => { stateTimer = null; broadcast(crash.snapshot()); }, 60);
+  stateTimer = setTimeout(() => { stateTimer = null; clearTimeout(deltaT); deltaT = null; delta = { bets: [], cash: [] }; broadcast(crash.snapshot()); }, 30);
 });
+// новые ставки и выводы шлём пачкой раз в 150 мс (а не весь список на каждое событие)
+let delta = { bets: [], cash: [] }, deltaT = null;
+const flushDelta = () => {
+  deltaT = null;
+  if (!delta.bets.length && !delta.cash.length) return;
+  broadcast({ type: 'crash_delta', roundId: crash.roundId, betsTotal: crash.bets.size, ...delta });
+  delta = { bets: [], cash: [] };
+};
+const queueDelta = (k, v) => { delta[k].push(v); if (!deltaT) deltaT = setTimeout(flushDelta, 150); };
+crash.on('bet', (b) => queueDelta('bets', b));
+crash.on('cash', (c) => queueDelta('cash', c));
 crash.on('balance', pushBalance);
 crash.on('inventory', pushInventory);
 crash.on('live', pushLive);
@@ -114,7 +128,12 @@ app.get('/api/me', auth, h((req) => {
 
 // витрина для лендинга (без авторизации)
 app.get('/api/showcase', h(() => houseItems().map(publicItem).filter((i) => i.value > 0).sort((a, b) => b.value - a.value).slice(0, 8)));
-app.get('/api/shop', auth, h(() => houseItems().map(publicItem).filter((i) => i.value > 0).sort((a, b) => a.value - b.value)));
+let shopCache = { at: 0, list: [] };
+const shopList = () => {
+  if (Date.now() - shopCache.at > 2000) shopCache = { at: Date.now(), list: houseItems().map(publicItem).filter((i) => i.value > 0).sort((a, b) => a.value - b.value) };
+  return shopCache.list;
+};
+app.get('/api/shop', auth, h(() => shopList()));
 app.get('/api/live', auth, h(() => live));
 
 app.post('/api/deposit', auth, h(async (req) => {
@@ -142,6 +161,7 @@ app.post('/api/items/:id/sell', auth, h((req) => {
     db.prepare('UPDATE items SET owner_id=NULL WHERE id=?').run(it.id);
     addBalance(uid, price, 'sell', { item: it.id });
     addWagerReq(uid, price);
+    shopCache.at = 0;
     return { price };
   })();
   return { ...res, balance: getUser(uid).balance };
@@ -168,15 +188,18 @@ app.post('/api/crash/cashout', auth, h((req) => crash.cashout(req.user.id)));
 
 app.post('/api/upgrade', auth, h((req) => {
   const r = doUpgrade(req.user.id, req.body);
+  shopCache.at = 0;
   pushBalance(req.user.id);
   if (r.win && r.targetValue >= r.inputValue * 3) pushLive({ userId: req.user.id, kind: 'upgrade', item: r.item, stars: r.stars, chance: r.chance });
   return { ...r, balance: getUser(req.user.id).balance };
 }));
 
+let ratingCache = { at: 0, rows: [] };
 app.get('/api/rating', auth, h((req) => {
   const from = weekStart();
-  const rows = db.prepare(`SELECT t.user_id id, SUM(t.amount) score, u.first_name name, u.photo_url photo
-    FROM tx t JOIN users u ON u.id=t.user_id WHERE t.type='wager' AND t.created_at>=? GROUP BY t.user_id ORDER BY score DESC`).all(from);
+  if (Date.now() - ratingCache.at > 15_000) ratingCache = { at: Date.now(), rows: db.prepare(`SELECT t.user_id id, SUM(t.amount) score, u.first_name name, u.photo_url photo
+    FROM tx t JOIN users u ON u.id=t.user_id WHERE t.type='wager' AND t.created_at>=? GROUP BY t.user_id ORDER BY score DESC`).all(from) };
+  const { rows } = ratingCache;
   const idx = rows.findIndex((r) => r.id === req.user.id);
   return {
     endsAt: from + 7 * 864e5, prizes: cfg.RATING_PRIZES, participants: rows.length,
