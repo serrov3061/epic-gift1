@@ -192,7 +192,7 @@ function nftCard(it, { sel = false, dim = false, chance = null, anim = false, i 
 }
 
 // ═══════════════ Навигация ═══════════════
-const ORDER = ['inventory', 'friends', 'home', 'rating', 'rocket', 'upgrade'];
+const ORDER = ['inventory', 'friends', 'home', 'rating', 'fair', 'rocket', 'upgrade'];
 const GAME = ['rocket', 'upgrade'];
 let current = 'home';
 function moveInd(container, ind, active) {
@@ -203,7 +203,7 @@ function moveInd(container, ind, active) {
 }
 const REDUCED = false; // переходы включены всегда
 // каскадное появление блоков экрана (из fastgram: part-in) — заходит и во вложенные списки
-const STAGGER_INTO = '.steps, .grid, .hscroll, .ref-stats, .io, .podium, #invContent, .list, .actions';
+const STAGGER_INTO = '.steps, .grid, .hscroll, .ref-stats, .io, .podium, #invContent, .list, .actions, .fr-acc';
 function stagger(root, { y = 22, dur = 560, step = 45, max = 14 } = {}) {
   if (!root.animate) return;
   const targets = [];
@@ -245,6 +245,7 @@ function go(name) {
   if (name === 'rating') loadRating();
   if (name === 'upgrade') { loadShop(); requestAnimationFrame(() => moveInd($('#upSeg'), $('#upSeg .seg-ind'), $('#upSeg .active'))); }
   if (name === 'inventory') renderInventory();
+  if (name === 'fair') { renderFairLive(); if (F.loaded) renderFair(); loadFair(F.loaded); }
   if (name === 'rocket') { resizeCanvas(); renderBets(); }
   hydrate();
 }
@@ -370,7 +371,7 @@ function openWallet(tab = 'stars') {
       } else {
         api('/api/me').then((r) => { S.me = r.user; if ($('#wOut', body) && r.user.wagerLeft > 0 && !$('.wager-note', body)) $('.sub', body).insertAdjacentHTML('afterend', `<div class="wager-note">${ic('clock')}<div><b>Отыграйте ещё ${fmt(r.user.wagerLeft)} ⭐</b><small>Пополнения и бонусы нужно один раз прокрутить в ставках — так мы защищаемся от отмыва</small></div></div>`); }).catch(() => {});
         body.innerHTML = `
-          <p class="sub">Вывод на ваш аккаунт StaticGram · от ${fmt(S.cfg.minWithdraw)} ⭐${S.cfg.withdrawDaily > 0 ? ` · до ${fmt(S.cfg.withdrawDaily)} ⭐ в сутки` : ''}</p>
+          <p class="sub">Вывод на ваш аккаунт StaticGram · от ${fmt(S.cfg.minWithdraw)} ⭐</p>
           ${S.me?.wagerLeft > 0 ? `<div class="wager-note">${ic('clock')}<div><b>Отыграйте ещё ${fmt(S.me.wagerLeft)} ⭐</b><small>Пополнения и бонусы нужно один раз прокрутить в ставках — так мы защищаемся от отмыва</small></div></div>` : ''}
           <label class="amount-input">${STAR}<input id="wOut" type="number" inputmode="numeric" value="${S.cfg.minWithdraw}"></label>
           <div class="quick"><button id="wMax">Весь баланс · ${fmt(S.me?.balance || 0)}</button></div>
@@ -463,6 +464,7 @@ function onCrashState(st) {
   }
   if (st.roundId !== seenRound) { seenRound = st.roundId; seenBets = new Set(); }
   scheduleBets();
+  if (current === 'fair') { renderFairLive(); if (prev && prev.phase !== 'crashed' && st.phase === 'crashed') setTimeout(() => loadFair(true), 400); }
   $('#rkFair').textContent = st.phase === 'crashed'
     ? `Раунд #${st.roundId} · seed ${st.seed} · краш = HMAC_SHA256(seed, "epic-gift-rocket")`
     : `Раунд #${st.roundId} · hash ${st.hash}`;
@@ -500,7 +502,7 @@ function renderBets() {
 const betInput = $('#betAmount');
 const cleanInt = (el) => { el.value = String(Math.max(0, Math.floor(Number(el.value) || 0))); };
 betInput.addEventListener('blur', () => cleanInt(betInput));
-$('#upAmount').addEventListener('blur', () => { const v = $('#upAmount').value; cleanInt($('#upAmount')); if ($('#upAmount').value !== v) renderUpgrade(); });
+$('#upAmount').addEventListener('blur', () => { cleanInt($('#upAmount')); renderUpgrade(); });
 $$('.round-btn').forEach((b) => b.addEventListener('click', () => { haptic.sel(); betInput.value = Math.max(0, (Number(betInput.value) || 0) + Number(b.dataset.step)); }));
 $$('.quick [data-q]').forEach((b) => b.addEventListener('click', () => {
   haptic.sel(); const v = Number(betInput.value) || 0, q = b.dataset.q, bal = S.me?.balance || 0;
@@ -527,9 +529,7 @@ function updateAction() {
   const b = myBet(); let text, cls = '';
   if (st.phase === 'betting') { if (b) { text = `Ставка ${fmt(b.value)} принята`; cls = 'wait'; } else text = 'Сделать ставку'; }
   else if (st.phase === 'flying') {
-    const mNow = multAt(sNow() - st.startAt), mMin = st.crashMin || 1;
-    if (b && !b.cashout && mNow <= mMin) { text = `Забрать можно после ${mMin.toFixed(2)}x`; cls = 'wait'; }
-    else if (b && !b.cashout) { text = `Забрать ${fmt(b.value * mNow)}`; cls = 'green'; }
+    if (b && !b.cashout) { text = `Забрать ${fmt(b.value * multAt(sNow() - st.startAt))}`; cls = 'green'; }
     else if (b) { text = `Выведено x${b.cashout.toFixed(2)} · +${fmt(b.payout)}`; cls = 'wait'; }
     else { text = 'Раунд идёт — ждите следующий'; cls = 'wait'; }
   } else text = 'Следующий раунд…', cls = 'wait';
@@ -657,7 +657,17 @@ $('#upTicks').innerHTML = Array.from({ length: 72 }, (_, i) => {
   return `<line class="${major ? 'major' : ''}" x1="${130 + Math.sin(a) * r1}" y1="${130 - Math.cos(a) * r1}" x2="${130 + Math.sin(a) * r2}" y2="${130 - Math.cos(a) * r2}"/>`;
 }).join('');
 const upInputValue = () => Number($('#upAmount').value) || 0;
-const chanceFor = (input, target) => (!(input > 0) || !(target > input) ? 0 : (input / target) * (1 - (S.cfg.upgradeEdge ?? .10)));
+// та же формула, что на сервере (upgradeEdge в src/upgrade.js): для крупных выплат шанс ниже
+const upEdge = (input, target) => {
+  const c = S.cfg, base = c.upgradeEdge ?? .15;
+  if (!(input > 0) || !(target > input)) return base;
+  const big = Math.min(c.bigMax ?? .25, .05 * Math.log2(1 + (target - input) / (c.bigStep ?? 20000)));
+  const m = target / input;
+  const mult = m > 5 ? Math.min(c.multMax ?? .1, .03 * (Math.log2(m / 5) + 1)) : 0;
+  return Math.min(.6, base + big + mult);
+};
+const chanceFor = (input, target) => (!(input > 0) || !(target > input) ? 0 : (input / target) * (1 - upEdge(input, target)));
+const overPayout = (v) => (S.cfg.maxPayout > 0 && v > S.cfg.maxPayout);
 const pct = (c) => (!c ? '0%' : (c * 100 >= 10 ? Math.round(c * 100) : (c * 100).toFixed(1)) + '%');
 function targetValue() {
   const t = S.upTarget, input = upInputValue(); if (!t) return 0;
@@ -667,7 +677,7 @@ let coreKey = '';
 function renderUpgrade(gridToo = true) {
   const input = upInputValue();
   tweenNum($('#upInputValue'), input, 400);
-  const maxC = S.cfg.maxChance ?? .80, minC = S.cfg.minChance ?? .01, ok = (c) => c >= minC && c <= maxC;
+  const maxC = S.cfg.maxChance ?? .75, minC = S.cfg.minChance ?? .01, ok = (c) => c >= minC && c <= maxC;
   if (gridToo) {
     const grid = $('#upTargets');
     if (S.upSeg === 'items') {
@@ -680,8 +690,8 @@ function renderUpgrade(gridToo = true) {
         : Array.from({ length: 6 }, () => '<div class="skel" style="aspect-ratio:.8"></div>').join('');
     } else {
       grid.innerHTML = (S.cfg.multipliers || []).map((mu, i) => {
-        const c = (1 - (S.cfg.upgradeEdge ?? .10)) / mu;
-        return `<button class="nft mult reveal ${S.upTarget?.type === 'mult' && S.upTarget.mult === mu ? 'sel' : ''} ${ok(c) ? '' : 'dim'}" style="--i:${i}" data-mult="${mu}">
+        const c = input > 0 ? chanceFor(input, input * mu) : (1 - (S.cfg.upgradeEdge ?? .15)) / mu;
+        return `<button class="nft mult reveal ${S.upTarget?.type === 'mult' && S.upTarget.mult === mu ? 'sel' : ''} ${ok(c) && !overPayout(input * mu) ? '' : 'dim'}" style="--i:${i}" data-mult="${mu}">
           <b>x${mu}</b><small>${pct(c)} · ${STAR}${fmt(input * mu)}</small></button>`;
       }).join('');
     }
@@ -710,7 +720,9 @@ function renderUpgrade(gridToo = true) {
   }
   if (t?.type === 'mult') $('#upTargetName').innerHTML = `${fmt(tv)} ${STAR}`;
   $('#upSub').textContent = !t ? 'Выберите цель внизу' : !input ? 'Введите ставку в звёздах' : c > maxC ? `Максимальный шанс ${pct(maxC)}` : c < minC ? 'Шанс слишком мал' : 'шанс улучшения';
-  $('#upGo').disabled = !(t && input > 0 && ok(c));
+  const tooBig = t?.type === 'mult' && overPayout(tv);
+  if (tooBig) $('#upSub').textContent = `Максимальный выигрыш ${fmt(S.cfg.maxPayout)} ⭐`;
+  $('#upGo').disabled = !(t && input > 0 && ok(c)) || tooBig;
 }
 $('#upAmount').addEventListener('input', () => renderUpgrade());
 $$('#upSeg button').forEach((b) => b.addEventListener('click', () => {
@@ -736,10 +748,7 @@ $('#upGo').addEventListener('click', async () => {
   const ptr = $('#upPointer');
   ptr.style.transition = 'none'; ptr.style.transform = 'rotate(0deg)'; ptr.getBoundingClientRect();
   try {
-    S.heldBalance = null;
     const r = await api('/api/upgrade', { amount: Number($('#upAmount').value) || 0, target: S.upTarget });
-    // пока крутится — показываем только списание ставки, выигрыш раскрываем в конце
-    if (S.me) { S.me.balance -= r.inputValue; tweenNum($('#meBalance'), S.me.balance, 400); }
     haptic.heavy(); wheel.classList.add('spinning');
     $('#upArc').style.strokeDasharray = `${C * r.chance} ${C}`;
     $('#upChance').textContent = pct(r.chance);
@@ -752,17 +761,13 @@ $('#upGo').addEventListener('click', async () => {
     wheel.classList.remove('spinning'); wheel.classList.add(r.win ? 'win' : 'lose');
     $('#upSub').textContent = r.win ? 'Успех!' : 'Не повезло';
     if (r.win) { haptic.ok(); burst(...centerOf(wheel), { n: 140, power: 12 }); } else haptic.err();
-    setBalance(S.heldBalance ?? r.balance); S.heldBalance = null;
+    setBalance(r.balance);
     await sleep(700);
     showUpgradeResult(r);
     $('#upAmount').value = 0; S.upTarget = null; coreKey = '-';
     S.spinning = false;
     loadMe().catch(() => {}); loadShop();
-  } catch (e) {
-    S.spinning = false; wheel.classList.remove('spinning');
-    if (S.heldBalance != null) { setBalance(S.heldBalance); S.heldBalance = null; }
-    fail(e); renderUpgrade();
-  }
+  } catch (e) { S.spinning = false; wheel.classList.remove('spinning'); fail(e); renderUpgrade(); }
 });
 function showUpgradeResult(r) {
   const art = r.item
@@ -864,6 +869,160 @@ function tickTimer() {
 }
 setInterval(tickTimer, 1000);
 
+
+// ═══════════════ ЧЕСТНОСТЬ ═══════════════
+const F = { loaded: false, rounds: [], edge: .12, salt: 'epic-gift-rocket', crashMax: 1000, open: new Set(), shown: new Set(), busy: false };
+const hexOf = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+const utf8 = (t) => new TextEncoder().encode(t);
+const sha256Hex = async (t) => hexOf(await crypto.subtle.digest('SHA-256', utf8(t)));
+// ровно та же формула, что в src/crash.js → crashFromSeed
+async function crashOf(seed) {
+  const key = await crypto.subtle.importKey('raw', utf8(seed), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const h = hexOf(await crypto.subtle.sign('HMAC', key, utf8(F.salt)));
+  const r = parseInt(h.slice(0, 13), 16) / 2 ** 52;
+  return Math.min(F.crashMax, Math.max(1, Math.floor((100 * (1 - F.edge)) / (1 - r)) / 100));
+}
+const shortHash = (h = '') => (h.length > 22 ? `${h.slice(0, 12)}…${h.slice(-8)}` : h);
+const pctNum = (n) => (Number.isInteger(+n.toFixed(2)) ? String(Math.round(n)) : n.toFixed(1));
+// обновляет текст только если он изменился, и мягко подсвечивает смену
+function setTxt(sel, text) {
+  const el = $(sel); if (!el || el.textContent === text) return;
+  el.textContent = text;
+  el.animate?.([{ opacity: .15, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], { duration: 420, easing: 'cubic-bezier(.16,.84,.24,1)' });
+}
+let autoFor = '';
+async function renderFairLive() {
+  const st = S.crash; if (!st) return;
+  setTxt('#frRound', `#${st.roundId}`);
+  setTxt('#frHash', st.hash);
+  const crashed = st.phase === 'crashed';
+  setTxt('#frSeed', crashed ? st.seed : '🔒 скрыт до конца раунда');
+  $('#frLive').classList.toggle('open', crashed);
+  const ph = $('#frPhase');
+  const label = st.phase === 'betting' ? 'Приём ставок' : st.phase === 'flying' ? 'Полёт' : `Краш x${(st.crash ?? 0).toFixed(2)}`;
+  if (ph.textContent !== label) { ph.textContent = label; ph.className = `fr-phase ${st.phase}`; }
+  const auto = $('#frAuto');
+  if (!crashed) { autoFor = ''; if (!auto.hidden) { auto.hidden = true; } return; }
+  if (autoFor === st.seed || !crypto?.subtle) return;
+  autoFor = st.seed;
+  try {
+    const [h, c] = await Promise.all([sha256Hex(st.seed), crashOf(st.seed)]);
+    if (autoFor !== st.seed) return;
+    const ok = h === st.hash && Math.abs(c - st.crash) < 0.005;
+    auto.className = `fr-auto ${ok ? '' : 'bad'}`;
+    auto.innerHTML = `${ic(ok ? 'check' : 'x')}<span>${ok ? `Проверено в твоём браузере: хэш совпал, краш x${c.toFixed(2)}` : 'Не совпало — сообщи админу'}</span>`;
+    auto.hidden = false;
+  } catch {}
+}
+async function loadFair(silent) {
+  try {
+    const r = await api('/api/fair');
+    F.edge = r.edge; F.salt = r.salt; F.crashMax = r.crashMax; F.rounds = r.rounds; F.loaded = true;
+    renderFair();
+  } catch (e) { if (!silent) fail(e); }
+}
+const roundHtml = (r, enter) => {
+  const t = new Date(r.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return `<div class="fr-r ${F.open.has(r.id) ? 'open' : ''} ${enter ? 'enter' : ''}" data-rid="${r.id}">
+    <button class="fr-r-h"><span class="hchip ${hClass(r.crash)}">${r.crash.toFixed(2)}x</span>
+      <span class="fr-r-mid"><b>Раунд #${r.id} · ${t}</b><small>${shortHash(r.hash)}</small></span>${ic('chev')}</button>
+    <div class="fr-r-body"><div><div class="fr-r-in">
+      <small>Хэш (был опубликован до раунда)</small><code>${esc(r.hash)}</code>
+      <small>Seed (открыт после краша)</small><code>${esc(r.seed)}</code>
+      <div class="fr-r-btns"><button data-act="check">Проверить</button><button data-act="copy">Копировать seed</button></div>
+    </div></div></div></div>`;
+};
+let upTblDone = '';
+function renderFair() {
+  const e = F.edge * 100;
+  if (Number.isInteger(+e.toFixed(2))) { tweenNum($('#frEdge'), Math.round(e), 900); tweenNum($('#frRtp'), Math.round(100 - e), 900); }
+  else { $('#frEdge').textContent = pctNum(e); $('#frRtp').textContent = pctNum(100 - e); }
+  tweenNum($('#frCount'), F.rounds.length, 500);
+  // список раундов: при обновлении добавляем только новые сверху — без мигания остальных
+  const box = $('#frRounds');
+  if (!F.rounds.length) { box.innerHTML = '<div class="empty-row">Раундов пока нет — сыграй в ракетку</div>'; F.shown.clear(); }
+  else if (!F.shown.size || !$('.fr-r', box)) {
+    box.innerHTML = F.rounds.map((r) => roundHtml(r)).join('');
+    F.rounds.forEach((r) => F.shown.add(r.id));
+  } else {
+    const fresh = F.rounds.filter((r) => !F.shown.has(r.id));
+    if (fresh.length) {
+      box.insertAdjacentHTML('afterbegin', fresh.map((r) => roundHtml(r, true)).join(''));
+      fresh.forEach((r) => F.shown.add(r.id));
+      const keep = new Set(F.rounds.map((r) => String(r.id)));
+      $$('.fr-r', box).forEach((el) => { if (!keep.has(el.dataset.rid)) { el.remove(); } });
+    }
+  }
+  // таблица шансов апгрейда считается тем же кодом, что и колесо
+  const bets = [100, 1000, 10000, 25000], mults = [2, 5, 10];
+  const key = JSON.stringify([S.cfg.upgradeEdge, S.cfg.bigStep, S.cfg.bigMax, S.cfg.multMax, S.cfg.maxPayout, S.cfg.maxBet]);
+  if (key !== upTblDone) {
+    upTblDone = key;
+    $('#frUpTbl').innerHTML = '<span class="h">Ставка</span>' + mults.map((m) => `<span class="h">x${m}</span>`).join('')
+      + bets.map((b) => `<span class="r">${fmt(b)} ⭐</span>` + mults.map((m) => (b > (S.cfg.maxBet || Infinity) || overPayout(b * m) ? '<span class="na">—</span>' : `<span>${pct(chanceFor(b, b * m))}</span>`)).join('')).join('');
+  }
+  const lim = [];
+  if (S.cfg.maxBet) lim.push(`максимальная ставка — ${fmt(S.cfg.maxBet)} ⭐`);
+  lim.push(S.cfg.maxPayout > 0 ? `максимальный выигрыш за одну игру — ${fmt(S.cfg.maxPayout)} ⭐` : 'потолка выигрыша нет');
+  lim.push(`ракетка летит не выше x${fmt(F.crashMax)}`);
+  $('#frLimits').textContent = lim.join(' · ').replace(/^./, (c) => c.toUpperCase()) + '.';
+}
+// раскрытие раундов и аккордеона
+$('#frRounds').addEventListener('click', async (ev) => {
+  const row = ev.target.closest('.fr-r'); if (!row) return;
+  const id = Number(row.dataset.rid), r = F.rounds.find((x) => x.id === id); if (!r) return;
+  const act = ev.target.closest('[data-act]')?.dataset.act;
+  if (act === 'copy') {
+    haptic.ok();
+    try { await navigator.clipboard.writeText(r.seed); } catch { const t = document.createElement('textarea'); t.value = r.seed; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+    return island('Seed скопирован', 'ok');
+  }
+  if (act === 'check') {
+    haptic.tap(); $('#frSeedIn').value = r.seed;
+    $('.fr-verify').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return setTimeout(() => $('#frCheck').click(), 450);
+  }
+  if (!ev.target.closest('.fr-r-h')) return;
+  haptic.sel();
+  const open = row.classList.toggle('open');
+  open ? F.open.add(id) : F.open.delete(id);
+});
+$('#frAcc').addEventListener('click', (ev) => {
+  const q = ev.target.closest('.fr-q'); if (!q) return;
+  haptic.sel(); q.parentElement.classList.toggle('open');
+});
+$('#rkFair').addEventListener('click', () => go('fair'));
+$('#frCheck').addEventListener('click', async () => {
+  if (F.busy) return;
+  const inp = $('#frSeedIn'), seed = inp.value.trim(), box = $('#frResult');
+  if (!seed) { haptic.err(); inp.classList.remove('nope'); void inp.offsetWidth; inp.classList.add('nope'); inp.focus(); return; }
+  if (!crypto?.subtle) return fail(new Error('Проверка работает только по HTTPS'));
+  F.busy = true;
+  const btn = $('#frCheck'); btn.classList.add('wait'); $('span', btn).textContent = 'Считаем…';
+  try {
+    if (!box.hidden) { await box.animate?.([{ opacity: 1 }, { opacity: 0, transform: 'translateY(-6px)' }], { duration: 180, fill: 'forwards' }).finished; }
+    const [h, c] = await Promise.all([sha256Hex(seed), crashOf(seed), sleep(500)]);
+    const cur = S.crash?.seed === seed ? { id: S.crash.roundId, hash: S.crash.hash, crash: S.crash.crash } : null;
+    const known = F.rounds.find((r) => r.seed === seed) || cur;
+    const calc = `<small>sha256(seed)</small><code>${esc(h)}</code>`;
+    let cls, head, body;
+    if (known) {
+      const okH = known.hash === h, okC = Math.abs(known.crash - c) < 0.005;
+      cls = okH && okC ? 'ok' : 'bad';
+      head = okH && okC ? `${ic('check')}Раунд #${known.id} подтверждён` : `${ic('x')}Раунд #${known.id}: не совпало`;
+      body = `<div class="fr-res-big grad-text">${c.toFixed(2)}x</div><small>${okH ? 'Хэш совпал с опубликованным до раунда.' : 'Хэш НЕ совпал с опубликованным.'} Краш ${okC ? 'пересчитан верно' : 'не совпал'}: на сервере ${known.crash.toFixed(2)}x.</small>${calc}`;
+    } else {
+      cls = 'info'; head = `${ic('shield')}Расчёт готов`;
+      body = `<div class="fr-res-big grad-text">${c.toFixed(2)}x</div><small>Такого раунда нет среди последних 30. Сравни хэш ниже с тем, что показывался до старта раунда — если совпал, краш честный.</small>${calc}`;
+    }
+    box.className = `fr-result ${cls}`; box.innerHTML = `<div class="fr-res-h">${head}</div>${body}`; box.hidden = false;
+    box.animate?.([{ opacity: 0, transform: 'translateY(14px) scale(.97)' }, { opacity: 1, transform: 'none' }], { duration: 520, easing: 'cubic-bezier(.16,.84,.24,1)' });
+    cls === 'bad' ? haptic.err() : haptic.ok();
+    if (cls === 'ok') burst(...centerOf(box), { n: 40, power: 7, colors: ['#34d399', '#6ee7b7', '#c4b5fd', '#fff'] });
+  } catch (e) { fail(e); }
+  finally { F.busy = false; btn.classList.remove('wait'); $('span', btn).textContent = 'Проверить'; }
+});
+
 // ═══════════════ WebSocket ═══════════════
 function setOnline(n) { S.online = n; tweenNum($('#hcOnline'), n, 500); tweenNum($('#rkOnline'), n, 500); }
 let ws, wsTries = 0, wsEverOpen = false, wsTimer = 0;
@@ -876,7 +1035,7 @@ function connectWS() {
     let m; try { m = JSON.parse(e.data); } catch { return; }
     if (m.type === 'crash') onCrashState(m);
     else if (m.type === 'crash_delta') onCrashDelta(m);
-    else if (m.type === 'balance') { if (S.spinning) S.heldBalance = m.balance; else setBalance(m.balance); }
+    else if (m.type === 'balance') setBalance(m.balance);
     else if (m.type === 'inventory') { loadMe().catch(() => {}); island('Новый подарок в инвентаре', 'ok', 'gift'); }
     else if (m.type === 'online') setOnline(m.n);
     else if (m.type === 'live') { S.live.unshift(m.event); S.live.length = Math.min(S.live.length, 20); renderLive(); }
@@ -936,3 +1095,4 @@ async function renderLanding() {
     if (sp === 'rocket' || sp === 'upgrade') go(sp);
   } catch (e) { fail(e); }
 })();
+

@@ -9,7 +9,7 @@
   <title>Epic Gift</title>
   <script src="https://staticgram.top/js/telegram-web-app.js"></script>
   <script src="/vendor/lottie.js" defer></script>
-  <link rel="stylesheet" href="/app.css?v=20261107e" />
+  <link rel="stylesheet" href="/app.css?v=20261107c" />
 </head>
 <body>
 <!-- ═════════ SVG-иконки ═════════ -->
@@ -158,7 +158,7 @@
           <div class="row">
             <span class="row-ic"><svg class="ic"><use href="#i-bolt" /></svg></span>
             <div class="row-txt"><b>Автовывод</b><small>Заберёт сам на нужном иксе</small></div>
-            <input class="mini-input" id="autoValue" type="number" step="0.01" min="1.11" value="2.00" inputmode="decimal" />
+            <input class="mini-input" id="autoValue" type="number" step="0.01" value="2.00" inputmode="decimal" />
             <label class="switch"><input type="checkbox" id="autoOn" /><span></span></label>
           </div>
         </div>
@@ -250,6 +250,60 @@
       <div class="list" id="rtList"></div>
       <div class="rt-me" id="rtMe"></div>
     </section>
+
+    <!-- ═════════ ЧЕСТНОСТЬ ═════════ -->
+    <section class="screen" id="s-fair">
+      <h1 class="title">Честность</h1>
+
+      <div class="panel fr-hero">
+        <div class="fr-orb"><svg class="ic"><use href="#i-shield" /></svg><i class="fr-ring"></i><i class="fr-ring r2"></i></div>
+        <div class="fr-copy">
+          <h3>Provably fair</h3>
+          <p>Результат раунда известен заранее и зашит в хэш. Подменить его после ставок невозможно — проверь сам.</p>
+        </div>
+      </div>
+
+      <div class="fr-stats">
+        <div class="panel stat"><small>Преимущество ракетки</small><b><span id="frEdge">0</span>%</b></div>
+        <div class="panel stat"><small>Возврат игрокам</small><b><span id="frRtp">0</span>%</b></div>
+      </div>
+
+      <div class="sec-head"><h3>Текущий раунд</h3><span class="fr-phase" id="frPhase">—</span></div>
+      <div class="panel fr-live" id="frLive">
+        <div class="fr-row"><small>Раунд</small><b id="frRound">#—</b></div>
+        <div class="fr-row col"><small>Хэш (sha256 от seed) — опубликован до старта</small><code id="frHash">—</code></div>
+        <div class="fr-row col fr-seedrow"><small>Seed — откроется после краша</small><code id="frSeed">🔒 скрыт до конца раунда</code></div>
+        <div class="fr-auto" id="frAuto" hidden></div>
+      </div>
+
+      <div class="sec-head"><h3>Проверить раунд</h3></div>
+      <div class="panel fr-verify">
+        <label class="fr-field"><small>Seed раунда</small>
+          <input id="frSeedIn" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="вставь seed из списка ниже" />
+        </label>
+        <button class="btn-main" id="frCheck"><svg class="ic"><use href="#i-shield" /></svg><span>Проверить</span><i class="shine"></i></button>
+        <div class="fr-result" id="frResult" hidden></div>
+      </div>
+
+      <div class="sec-head"><h3>Последние раунды</h3><span class="pill-count" id="frCount">0</span></div>
+      <div class="list fr-rounds" id="frRounds"></div>
+
+      <div class="sec-head"><h3>Как это работает</h3></div>
+      <div class="fr-acc" id="frAcc">
+        <div class="fr-item">
+          <button class="fr-q"><span>Ракетка</span><svg class="ic"><use href="#i-chev" /></svg></button>
+          <div class="fr-a"><div><p>Перед раундом сервер выбирает случайный <b>seed</b> и публикует <b>hash = sha256(seed)</b>. Краш считается как <b>HMAC_SHA256(seed, "epic-gift-rocket")</b>. После краша seed открывается: хэшируй его — должен получиться тот же hash, который был до ставок.</p><p>Шанс долететь до x: <b>(1 − преимущество) / x</b>.</p></div></div>
+        </div>
+        <div class="fr-item">
+          <button class="fr-q"><span>Улучшение</span><svg class="ic"><use href="#i-chev" /></svg></button>
+          <div class="fr-a"><div><p>Шанс = <b>ставка / цель × (1 − edge)</b>. Он всегда виден на колесе до того, как ты нажал «Улучшить», и это ровно тот шанс, по которому бросается кубик. Для крупных выплат и больших иксов edge выше — ниже таблица.</p><div class="fr-tbl" id="frUpTbl"></div></div></div>
+        </div>
+        <div class="fr-item">
+          <button class="fr-q"><span>Лимиты</span><svg class="ic"><use href="#i-chev" /></svg></button>
+          <div class="fr-a"><div><p id="frLimits">—</p></div></div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- ═════════ Таббар ═════════ -->
@@ -259,11 +313,12 @@
     <button data-tab="friends"><svg class="ic"><use href="#i-users" /></svg><span>Друзья</span></button>
     <button data-tab="home" class="active"><svg class="ic"><use href="#i-home" /></svg><span>Главная</span></button>
     <button data-tab="rating"><svg class="ic"><use href="#i-trophy" /></svg><span>Рейтинг</span></button>
+    <button data-tab="fair"><svg class="ic"><use href="#i-shield" /></svg><span>Честность</span></button>
   </nav>
 </div>
 
 <div id="sheetRoot"></div>
 <div id="island"><span class="isl-ic"></span><span class="isl-txt"></span></div>
-<script src="/app.js?v=20261107e" defer></script>
+<script src="/app.js?v=20261107c" defer></script>
 </body>
 </html>
