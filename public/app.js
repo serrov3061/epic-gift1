@@ -12,8 +12,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const K = 0.00006;
 const multAt = (ms) => Math.max(1, Math.floor(100 * Math.exp(K * Math.max(0, ms))) / 100);
 // Слабое устройство или «уменьшить движение» → без Lottie, меньше частиц
-const LOW_END = matchMedia('(prefers-reduced-motion: reduce)').matches
-  || (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 3;
+const LOW_END = (navigator.hardwareConcurrency || 8) <= 2 || (navigator.deviceMemory || 8) <= 2;
 if (LOW_END) document.documentElement.classList.add('low-end');
 const MAX_LOTTIE = LOW_END ? 0 : 10;
 const ic = (name, cls = '') => `<svg class="ic ${cls}"><use href="#i-${name}"/></svg>`;
@@ -117,7 +116,7 @@ function tweenNum(el, to, dur = 700) {
   const from = Number.isFinite(prev) ? prev : 0;
   el.dataset.v = to;
   cancelAnimationFrame(tweens.get(el));
-  if (from === to || LOW_END) { el.textContent = fmt(to); return; }
+  if (from === to) { el.textContent = fmt(to); return; }
   const t0 = performance.now();
   const step = (t) => {
     const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 4);
@@ -202,14 +201,20 @@ function moveInd(container, ind, active) {
   ind.style.width = `${active.offsetWidth}px`;
   ind.style.transform = `translateX(${active.offsetLeft}px)`;
 }
-const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
-// каскадное появление блоков экрана (из fastgram: part-in)
-function stagger(screen) {
-  if (REDUCED || !screen.animate) return;
-  [...screen.children].forEach((el, i) => {
-    if (el.hidden || el.classList.contains('reveal')) return;
-    el.animate([{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }],
-      { duration: 520, delay: Math.min(i, 9) * 45, easing: 'cubic-bezier(.16,.84,.24,1)', fill: 'backwards' });
+const REDUCED = false; // переходы включены всегда
+// каскадное появление блоков экрана (из fastgram: part-in) — заходит и во вложенные списки
+const STAGGER_INTO = '.steps, .grid, .hscroll, .ref-stats, .io, .podium, #invContent, .list, .actions';
+function stagger(root, { y = 22, dur = 560, step = 45, max = 14 } = {}) {
+  if (!root.animate) return;
+  const targets = [];
+  [...root.children].forEach((el) => {
+    if (el.hidden) return;
+    if (el.matches(STAGGER_INTO) && el.children.length) targets.push(...el.children); else targets.push(el);
+  });
+  targets.forEach((el, i) => {
+    if (el.classList?.contains('skel')) return;
+    el.animate([{ opacity: 0, transform: `translateY(${y}px) scale(.96)` }, { opacity: 1, transform: 'none' }],
+      { duration: dur, delay: Math.min(i, max) * step, easing: 'cubic-bezier(.16,.84,.24,1)', fill: 'backwards' });
   });
 }
 function go(name) {
@@ -230,6 +235,7 @@ function go(name) {
     setTimeout(() => from.classList.remove('leaving', 'to-right'), 300);
   }
   stagger($(`#s-${name}`));
+  const tb = $(`.tabbar [data-tab="${name}"] .ic`); tb?.animate?.([{ transform: 'scale(.7) translateY(4px)' }, { transform: 'translateY(-1px) scale(1.18)', offset: .55 }, { transform: 'translateY(-1px) scale(1.08)' }], { duration: 480, easing: 'cubic-bezier(.34,1.56,.64,1)' });
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
   moveInd($('#tabbar'), $('#tabInd'), $(`.tabbar [data-tab="${name}"]`));
   const isGame = GAME.includes(name);
@@ -290,6 +296,7 @@ function openSheet(html, onMount) {
   };
   sheet.addEventListener('touchend', endDrag); sheet.addEventListener('touchcancel', endDrag);
   onMount?.(sheet);
+  stagger(sheet, { y: 16, dur: 480, step: 40, max: 8 });
   hydrate(sheet);
   return sheet;
 }
