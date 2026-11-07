@@ -657,7 +657,7 @@ $('#upTicks').innerHTML = Array.from({ length: 72 }, (_, i) => {
   return `<line class="${major ? 'major' : ''}" x1="${130 + Math.sin(a) * r1}" y1="${130 - Math.cos(a) * r1}" x2="${130 + Math.sin(a) * r2}" y2="${130 - Math.cos(a) * r2}"/>`;
 }).join('');
 const upInputValue = () => Number($('#upAmount').value) || 0;
-const chanceFor = (input, target) => (!(input > 0) || !(target > input) ? 0 : (input / target) * (1 - (S.cfg.upgradeEdge ?? .22)));
+const chanceFor = (input, target) => (!(input > 0) || !(target > input) ? 0 : (input / target) * (1 - (S.cfg.upgradeEdge ?? .10)));
 const pct = (c) => (!c ? '0%' : (c * 100 >= 10 ? Math.round(c * 100) : (c * 100).toFixed(1)) + '%');
 function targetValue() {
   const t = S.upTarget, input = upInputValue(); if (!t) return 0;
@@ -667,7 +667,7 @@ let coreKey = '';
 function renderUpgrade(gridToo = true) {
   const input = upInputValue();
   tweenNum($('#upInputValue'), input, 400);
-  const maxC = S.cfg.maxChance ?? .70, minC = S.cfg.minChance ?? .01, ok = (c) => c >= minC && c <= maxC;
+  const maxC = S.cfg.maxChance ?? .80, minC = S.cfg.minChance ?? .01, ok = (c) => c >= minC && c <= maxC;
   if (gridToo) {
     const grid = $('#upTargets');
     if (S.upSeg === 'items') {
@@ -680,7 +680,7 @@ function renderUpgrade(gridToo = true) {
         : Array.from({ length: 6 }, () => '<div class="skel" style="aspect-ratio:.8"></div>').join('');
     } else {
       grid.innerHTML = (S.cfg.multipliers || []).map((mu, i) => {
-        const c = (1 - (S.cfg.upgradeEdge ?? .22)) / mu;
+        const c = (1 - (S.cfg.upgradeEdge ?? .10)) / mu;
         return `<button class="nft mult reveal ${S.upTarget?.type === 'mult' && S.upTarget.mult === mu ? 'sel' : ''} ${ok(c) ? '' : 'dim'}" style="--i:${i}" data-mult="${mu}">
           <b>x${mu}</b><small>${pct(c)} · ${STAR}${fmt(input * mu)}</small></button>`;
       }).join('');
