@@ -500,7 +500,7 @@ function renderBets() {
 const betInput = $('#betAmount');
 const cleanInt = (el) => { el.value = String(Math.max(0, Math.floor(Number(el.value) || 0))); };
 betInput.addEventListener('blur', () => cleanInt(betInput));
-$('#upAmount').addEventListener('blur', () => { cleanInt($('#upAmount')); renderUpgrade(); });
+$('#upAmount').addEventListener('blur', () => { const v = $('#upAmount').value; cleanInt($('#upAmount')); if ($('#upAmount').value !== v) renderUpgrade(); });
 $$('.round-btn').forEach((b) => b.addEventListener('click', () => { haptic.sel(); betInput.value = Math.max(0, (Number(betInput.value) || 0) + Number(b.dataset.step)); }));
 $$('.quick [data-q]').forEach((b) => b.addEventListener('click', () => {
   haptic.sel(); const v = Number(betInput.value) || 0, q = b.dataset.q, bal = S.me?.balance || 0;
@@ -736,7 +736,10 @@ $('#upGo').addEventListener('click', async () => {
   const ptr = $('#upPointer');
   ptr.style.transition = 'none'; ptr.style.transform = 'rotate(0deg)'; ptr.getBoundingClientRect();
   try {
+    S.heldBalance = null;
     const r = await api('/api/upgrade', { amount: Number($('#upAmount').value) || 0, target: S.upTarget });
+    // пока крутится — показываем только списание ставки, выигрыш раскрываем в конце
+    if (S.me) { S.me.balance -= r.inputValue; tweenNum($('#meBalance'), S.me.balance, 400); }
     haptic.heavy(); wheel.classList.add('spinning');
     $('#upArc').style.strokeDasharray = `${C * r.chance} ${C}`;
     $('#upChance').textContent = pct(r.chance);
@@ -749,13 +752,17 @@ $('#upGo').addEventListener('click', async () => {
     wheel.classList.remove('spinning'); wheel.classList.add(r.win ? 'win' : 'lose');
     $('#upSub').textContent = r.win ? 'Успех!' : 'Не повезло';
     if (r.win) { haptic.ok(); burst(...centerOf(wheel), { n: 140, power: 12 }); } else haptic.err();
-    setBalance(r.balance);
+    setBalance(S.heldBalance ?? r.balance); S.heldBalance = null;
     await sleep(700);
     showUpgradeResult(r);
     $('#upAmount').value = 0; S.upTarget = null; coreKey = '-';
     S.spinning = false;
     loadMe().catch(() => {}); loadShop();
-  } catch (e) { S.spinning = false; wheel.classList.remove('spinning'); fail(e); renderUpgrade(); }
+  } catch (e) {
+    S.spinning = false; wheel.classList.remove('spinning');
+    if (S.heldBalance != null) { setBalance(S.heldBalance); S.heldBalance = null; }
+    fail(e); renderUpgrade();
+  }
 });
 function showUpgradeResult(r) {
   const art = r.item
@@ -869,7 +876,7 @@ function connectWS() {
     let m; try { m = JSON.parse(e.data); } catch { return; }
     if (m.type === 'crash') onCrashState(m);
     else if (m.type === 'crash_delta') onCrashDelta(m);
-    else if (m.type === 'balance') setBalance(m.balance);
+    else if (m.type === 'balance') { if (S.spinning) S.heldBalance = m.balance; else setBalance(m.balance); }
     else if (m.type === 'inventory') { loadMe().catch(() => {}); island('Новый подарок в инвентаре', 'ok', 'gift'); }
     else if (m.type === 'online') setOnline(m.n);
     else if (m.type === 'live') { S.live.unshift(m.event); S.live.length = Math.min(S.live.length, 20); renderLive(); }

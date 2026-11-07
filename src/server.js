@@ -190,11 +190,14 @@ app.post('/api/crash/bet', auth, h((req) => crash.placeBet(req.user.id, req.body
 app.post('/api/crash/cashout', auth, h((req) => crash.cashout(req.user.id)));
 
 app.post('/api/upgrade', auth, h((req) => {
-  const r = doUpgrade(req.user.id, req.body);
+  const uid = req.user.id;
+  const r = doUpgrade(uid, req.body);
   shopCache.at = 0;
-  pushBalance(req.user.id);
-  if (r.win && r.targetValue >= r.inputValue * 3) pushLive({ userId: req.user.id, kind: 'upgrade', item: r.item, stars: r.stars, chance: r.chance });
-  return { ...r, balance: getUser(req.user.id).balance };
+  // результат раскрываем после того, как колесо докрутится (~5 с): баланс в других вкладках и лента Live — с задержкой
+  const REVEAL_MS = 5200;
+  setTimeout(() => pushBalance(uid), REVEAL_MS);
+  if (r.win && r.targetValue >= r.inputValue * 3) setTimeout(() => pushLive({ userId: uid, kind: 'upgrade', item: r.item, stars: r.stars, chance: r.chance }), REVEAL_MS);
+  return { ...r, balance: getUser(uid).balance };
 }));
 
 let ratingCache = { at: 0, rows: [] };
