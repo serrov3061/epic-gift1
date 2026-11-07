@@ -494,3 +494,20 @@ input[type=number] { -moz-appearance: textfield; }
 .land-foot { text-align: center; color: var(--t3); font-size: 12px; margin-top: 30px; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+
+/* ─────────── пустые состояния ─────────── */
+.shop-empty { flex: 1; display: flex; align-items: center; gap: 14px; padding: 18px; border-radius: 20px; background: var(--s1); border: 1px dashed var(--stroke2); }
+.shop-empty > .ic { width: 34px; height: 34px; color: var(--v2); flex: none; animation: float 3s ease-in-out infinite; }
+.shop-empty b { display: block; font-size: 15px; }
+.shop-empty small { display: block; font-size: 13px; color: var(--t2); margin-top: 3px; }
+.hc-placeholder { width: 74%; height: 74%; border-radius: 30%; display: grid; place-items: center; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.22); backdrop-filter: blur(6px); }
+.hc-placeholder .ic { width: 52%; height: 52%; color: #fff; }
+
+/* ─────────── десктоп: приложение как телефон по центру ─────────── */
+#app { max-width: 520px; margin: 0 auto; min-height: 100vh; }
+.tabbar { left: 50%; right: auto; width: min(calc(100% - 24px), 496px); transform: translateX(-50%); }
+.sheet { left: 50%; right: auto; width: min(100%, 520px); transform: translateX(-50%); }
+@keyframes sheetUp { from { transform: translate(-50%, 100%); } to { transform: translate(-50%, 0); } }
+@keyframes sheetDown { from { transform: translate(-50%, 0); } to { transform: translate(-50%, 100%); } }
+.land { max-width: 560px; margin: 0 auto; }
+@media (min-width: 560px) { #app { border-left: 1px solid var(--stroke); border-right: 1px solid var(--stroke); } }

@@ -143,8 +143,9 @@ window.addEventListener('load', () => hydrate());
 // ═══════════════ State ═══════════════
 const S = {
   cfg: {}, me: null, items: [], shop: [], showcase: [], refLink: '', live: [], online: 0,
-  crash: null, offset: 0, rkSel: new Set(), upSel: new Set(), upTarget: null, upSeg: 'items', spinning: false,
+  shopLoaded: false, crash: null, offset: 0, rkSel: new Set(), upSel: new Set(), upTarget: null, upSeg: 'items', spinning: false,
 };
+const orbit = (list, n, cls = () => '') => Array.from({ length: n }, (_, i) => (list[i] ? nftMedia(list[i], { anim: true, cls: cls(i) }) : `<div class="nft-media ${cls(i)}"><div class="hc-placeholder">${ic('gift')}</div></div>`)).join('');
 const itemById = (id) => S.items.find((i) => i.id === id);
 const selValue = (set) => [...set].reduce((s, id) => s + (itemById(id)?.value || 0), 0);
 const avatarHtml = (name, photo, cls = '') => (photo
@@ -218,7 +219,7 @@ async function loadMe() {
   renderMe(); renderInventory(); updateRocketItems(); renderUpgrade();
 }
 async function loadShop() {
-  try { S.shop = await api('/api/shop'); renderUpgrade(); renderShowcase(); } catch (e) { fail(e); }
+  try { S.shop = await api('/api/shop'); S.shopLoaded = true; renderUpgrade(); renderShowcase(); } catch (e) { fail(e); }
 }
 
 // ═══════════════ Bottom sheet ═══════════════
@@ -230,7 +231,7 @@ function openSheet(html, onMount) {
   const sheet = $('.sheet', root);
   let y0 = null, dy = 0;
   sheet.addEventListener('touchstart', (e) => { if (sheet.scrollTop <= 0) { y0 = e.touches[0].clientY; sheet.style.transition = 'none'; } }, { passive: true });
-  sheet.addEventListener('touchmove', (e) => { if (y0 === null) return; dy = Math.max(0, e.touches[0].clientY - y0); sheet.style.transform = `translateY(${dy}px)`; }, { passive: true });
+  sheet.addEventListener('touchmove', (e) => { if (y0 === null) return; dy = Math.max(0, e.touches[0].clientY - y0); sheet.style.transform = `translate(-50%, ${dy}px)`; }, { passive: true });
   sheet.addEventListener('touchend', () => {
     if (y0 === null) return; y0 = null; sheet.style.transition = 'transform .4s cubic-bezier(.2,1.25,.35,1)';
     if (dy > 110) closeSheet(); else sheet.style.transform = ''; dy = 0;
@@ -297,7 +298,7 @@ function openWallet(tab = 'stars') {
         const r = S.cfg.relayer;
         body.innerHTML = `
           <div class="empty" style="background:none;border:0;padding:10px 4px 0">
-            <div class="empty-orbit">${S.showcase.slice(0, 3).map((it) => nftMedia(it, { anim: true })).join('')}</div>
+            <div class="empty-orbit">${orbit(S.showcase, 3)}</div>
             <h3>Закиньте NFT-подарок</h3>
             <p>Отправьте улучшенный подарок на ${r ? `<span class="accent">@${esc(r)}</span>` : 'аккаунт-ретранслятор'} — он появится в инвентаре автоматически за ~20 секунд.</p>
             ${r ? `<button class="btn-main" id="wRelayer">${ic('send')}<span>Отправить подарок</span><i class="shine"></i></button>` : ''}
@@ -367,9 +368,12 @@ function renderShowcase() {
   const box = $('#homeShowcase');
   box.innerHTML = S.showcase.length
     ? S.showcase.slice(0, 10).map((it, i) => nftCard(it, { anim: i < 6, i })).join('')
-    : Array.from({ length: 4 }, () => '<div class="skel" style="flex:none;width:128px;height:168px"></div>').join('');
+    : S.shopLoaded
+      ? `<div class="shop-empty reveal">${ic('gift')}<div><b>Призы скоро появятся</b><small>Пока можно улучшать звёзды через множитель</small></div></div>`
+      : Array.from({ length: 4 }, () => '<div class="skel" style="flex:none;width:128px;height:168px"></div>').join('');
   const hero = S.showcase[0];
   const hc = $('#hcNft');
+  if (!hero && !hc.innerHTML.trim()) hc.innerHTML = `<div class="hc-placeholder">${ic('gift')}</div>`;
   if (hero && hc.dataset.id !== String(hero.id)) { hc.outerHTML = nftMedia(hero, { anim: true, cls: 'hc-nft' }).replace('class="nft-media', 'id="hcNft" data-id="' + hero.id + '" class="nft-media'); }
   hydrate();
 }
@@ -618,7 +622,9 @@ function renderUpgrade(gridToo = true) {
       grid.innerHTML = S.shop.length ? S.shop.map((it, i) => {
         const c = chanceFor(input, it.value);
         return nftCard(it, { sel: S.upTarget?.type === 'item' && S.upTarget.id === it.id, dim: input > 0 && !ok(c), chance: input > 0 && c > 0 ? pct(Math.min(c, maxC)) : null, i });
-      }).join('') : Array.from({ length: 6 }, () => '<div class="skel" style="aspect-ratio:.8"></div>').join('');
+      }).join('') : S.shopLoaded
+        ? `<div class="shop-empty" style="grid-column:1/-1">${ic('gift')}<div><b>На складе пока нет NFT</b><small>Выбери вкладку «Множитель» — выигрыш звёздами</small></div></div>`
+        : Array.from({ length: 6 }, () => '<div class="skel" style="aspect-ratio:.8"></div>').join('');
     } else {
       grid.innerHTML = (S.cfg.multipliers || []).map((mu, i) => {
         const c = (1 - (S.cfg.upgradeEdge ?? .08)) / mu;
@@ -716,7 +722,7 @@ function renderInventory() {
   if (!S.items.length) {
     const r = S.cfg.relayer;
     box.innerHTML = `<div class="empty reveal">
-      <div class="empty-orbit">${S.showcase.slice(0, 3).map((it) => nftMedia(it, { anim: true })).join('')}</div>
+      <div class="empty-orbit">${orbit(S.showcase, 3)}</div>
       <h3>Инвентарь пуст</h3>
       <p>Отправьте NFT-подарки ${r ? `на <span class="accent">@${esc(r)}</span>` : 'на аккаунт-ретранслятор'}, чтобы играть ими в апгрейде и ракетке.</p>
       <button class="btn-main" id="invSend">${ic('send')}<span>Отправить подарок</span><i class="shine"></i></button>
@@ -826,7 +832,7 @@ async function renderLanding() {
       <a class="btn-glow" href="${bot}" style="text-decoration:none;color:#fff"><span>Играть</span><i class="shine"></i></a></nav>
     <section class="land-hero">
       <div class="land-orbit"><div class="ring-o"></div>
-        ${show.slice(0, 5).map((it, i) => nftMedia(it, { anim: true, cls: `o${i + 1}` })).join('')}</div>
+        ${orbit(show, 5, (i) => `o${i + 1}`)}</div>
       <h1>Подарки,<br><span class="grad-text">которые растут</span></h1>
       <p class="lead">Ракетка и улучшение NFT-подарков StaticGram. Ставь звёзды или подарки — забирай редкие NFT и выводи их себе.</p>
       <a class="btn-main" href="${bot}">${ic('rocket')}<span>Открыть в StaticGram</span><i class="shine"></i></a>
