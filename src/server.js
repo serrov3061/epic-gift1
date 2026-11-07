@@ -72,10 +72,14 @@ wss.on('connection', (ws, req) => {
   try { user = authUser(new URL(req.url, 'http://x').searchParams.get('initData')); } catch { return ws.close(4001, 'auth'); }
   if (!sockets.has(user.id)) sockets.set(user.id, new Set());
   sockets.get(user.id).add(ws);
+  ws.isAlive = true; ws.on('pong', () => { ws.isAlive = true; });
+  ws.on('error', () => {});
   send(ws, crash.snapshot());
   pushOnline();
   ws.on('close', () => { sockets.get(user.id)?.delete(ws); if (!sockets.get(user.id)?.size) sockets.delete(user.id); pushOnline(); });
 });
+// ping раз в 25 с: прокси не рвут «тихие» соединения, мёртвые сокеты вычищаются
+setInterval(() => wss.clients.forEach((ws) => { if (ws.isAlive === false) return ws.terminate(); ws.isAlive = false; try { ws.ping(); } catch {} }), 25_000).unref();
 let onlineT = null;
 function pushOnline() {
   if (onlineT) return;

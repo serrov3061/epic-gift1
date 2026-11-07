@@ -34,11 +34,19 @@ const haptic = {
 
 // ═══════════════ API ═══════════════
 async function api(path, body) {
-  const r = await fetch(path, {
-    method: body ? 'POST' : 'GET',
-    headers: { 'content-type': 'application/json', 'x-init-data': INIT },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const ctl = new AbortController();
+  const to = setTimeout(() => ctl.abort(), 20000);
+  let r;
+  try {
+    r = await fetch(path, {
+      method: body ? 'POST' : 'GET',
+      headers: { 'content-type': 'application/json', 'x-init-data': INIT },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: ctl.signal,
+    });
+  } catch (e) {
+    throw new Error(e?.name === 'AbortError' ? 'Сервер не отвечает, попробуйте ещё раз' : 'Нет соединения с интернетом');
+  } finally { clearTimeout(to); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || 'Ошибка сети');
   return j;
@@ -52,10 +60,24 @@ function island(text, kind = '', icon) {
   $('.isl-ic', el).innerHTML = ic(icon);
   $('.isl-txt', el).textContent = text;
   el.className = `${kind}`;
+  el.style.transform = ''; el.style.transition = '';
   void el.offsetWidth;
   el.classList.add('show');
-  clearTimeout(islT); islT = setTimeout(() => el.classList.remove('show'), 2600);
+  clearTimeout(islT); islT = setTimeout(hideIsland, 2800);
 }
+function hideIsland() { clearTimeout(islT); $('#island').classList.remove('show'); }
+// свайп вверх закрывает уведомление (как тосты в fastgram)
+(() => {
+  const el = $('#island'); let y0 = null, dy = 0;
+  el.addEventListener('pointerdown', (e) => { y0 = e.clientY; dy = 0; clearTimeout(islT); el.style.transition = 'none'; el.setPointerCapture?.(e.pointerId); });
+  el.addEventListener('pointermove', (e) => { if (y0 === null) return; dy = Math.min(0, e.clientY - y0); el.style.transform = `translate(-50%, ${dy}px)`; });
+  const end = () => {
+    if (y0 === null) return; y0 = null;
+    el.style.transition = ''; el.style.transform = '';
+    if (dy < -18 || dy === 0) hideIsland(); else islT = setTimeout(hideIsland, 1800);
+  };
+  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+})();
 const fail = (e) => { haptic.err(); island(e.message || String(e), 'err'); };
 
 // ═══════════════ FX: частицы / конфетти ═══════════════
@@ -90,10 +112,12 @@ const centerOf = (el) => { const r = el.getBoundingClientRect(); return [r.left 
 // ═══════════════ Числа с анимацией ═══════════════
 const tweens = new WeakMap();
 function tweenNum(el, to, dur = 700) {
-  const from = Number(el.dataset.v ?? (String(el.textContent).replace(/\D/g, '') || 0));
+  to = Number.isFinite(Number(to)) ? Number(to) : 0;
+  const prev = Number(el.dataset.v ?? String(el.textContent).replace(/\D/g, ''));
+  const from = Number.isFinite(prev) ? prev : 0;
   el.dataset.v = to;
   cancelAnimationFrame(tweens.get(el));
-  if (from === to) { el.textContent = fmt(to); return; }
+  if (from === to || LOW_END) { el.textContent = fmt(to); return; }
   const t0 = performance.now();
   const step = (t) => {
     const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 4);
@@ -178,15 +202,34 @@ function moveInd(container, ind, active) {
   ind.style.width = `${active.offsetWidth}px`;
   ind.style.transform = `translateX(${active.offsetLeft}px)`;
 }
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+// каскадное появление блоков экрана (из fastgram: part-in)
+function stagger(screen) {
+  if (REDUCED || !screen.animate) return;
+  [...screen.children].forEach((el, i) => {
+    if (el.hidden || el.classList.contains('reveal')) return;
+    el.animate([{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }],
+      { duration: 520, delay: Math.min(i, 9) * 45, easing: 'cubic-bezier(.16,.84,.24,1)', fill: 'backwards' });
+  });
+}
 function go(name) {
-  if (name === current) return;
+  if (name === current || !$(`#s-${name}`)) return;
+  closeSheet(true);
   haptic.tap();
+  const from = $(`#s-${current}`);
   const back = ORDER.indexOf(name) < ORDER.indexOf(current);
   current = name;
+  $$('.screen.leaving').forEach((s) => { s.classList.remove('leaving', 'to-right'); });
   $$('.screen').forEach((s) => {
     const on = s.id === `s-${name}`;
     s.classList.toggle('active', on); s.classList.toggle('back-anim', on && back);
   });
+  // уходящий экран не исчезает мгновенно, а уезжает в сторону
+  if (from && !REDUCED) {
+    from.classList.add('leaving'); from.classList.toggle('to-right', back);
+    setTimeout(() => from.classList.remove('leaving', 'to-right'), 300);
+  }
+  stagger($(`#s-${name}`));
   $$('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
   moveInd($('#tabbar'), $('#tabInd'), $(`.tabbar [data-tab="${name}"]`));
   const isGame = GAME.includes(name);
@@ -201,8 +244,9 @@ function go(name) {
 }
 $$('.tabbar button').forEach((b) => b.addEventListener('click', () => go(b.dataset.tab)));
 document.addEventListener('click', (e) => { const g = e.target.closest('[data-go]'); if (g) go(g.dataset.go); });
-$('#navBack').addEventListener('click', () => go('home'));
-tg?.BackButton.onClick(() => go('home'));
+const goBack = () => { if ($('#sheetRoot').firstChild) closeSheet(); else go('home'); };
+$('#navBack').addEventListener('click', goBack);
+tg?.BackButton.onClick(goBack);
 addEventListener('resize', () => { moveInd($('#tabbar'), $('#tabInd'), $('.tabbar .active')); moveInd($('#upSeg'), $('#upSeg .seg-ind'), $('#upSeg .active')); });
 
 // ═══════════════ Профиль / баланс ═══════════════
@@ -229,19 +273,22 @@ async function loadShop() {
 }
 
 // ═══════════════ Bottom sheet ═══════════════
+let sheetGen = 0;
 function openSheet(html, onMount) {
   closeSheet(true);
+  sheetGen++;
   const root = $('#sheetRoot');
   root.innerHTML = `<div class="backdrop"></div><div class="sheet"><div class="grabber"></div>${html}</div>`;
   $('.backdrop', root).addEventListener('click', () => closeSheet());
   const sheet = $('.sheet', root);
   let y0 = null, dy = 0;
-  sheet.addEventListener('touchstart', (e) => { if (sheet.scrollTop <= 0) { y0 = e.touches[0].clientY; sheet.style.transition = 'none'; } }, { passive: true });
+  sheet.addEventListener('touchstart', (e) => { if (sheet.scrollTop <= 0 && !e.target.closest('input')) { y0 = e.touches[0].clientY; dy = 0; sheet.style.transition = 'none'; } }, { passive: true });
   sheet.addEventListener('touchmove', (e) => { if (y0 === null) return; dy = Math.max(0, e.touches[0].clientY - y0); sheet.style.transform = `translate(-50%, ${dy}px)`; }, { passive: true });
-  sheet.addEventListener('touchend', () => {
+  const endDrag = () => {
     if (y0 === null) return; y0 = null; sheet.style.transition = 'transform .4s cubic-bezier(.2,1.25,.35,1)';
     if (dy > 110) closeSheet(); else sheet.style.transform = ''; dy = 0;
-  });
+  };
+  sheet.addEventListener('touchend', endDrag); sheet.addEventListener('touchcancel', endDrag);
   onMount?.(sheet);
   hydrate(sheet);
   return sheet;
@@ -249,9 +296,11 @@ function openSheet(html, onMount) {
 function closeSheet(instant) {
   const root = $('#sheetRoot');
   if (!root.firstChild) return;
-  if (instant) { root.innerHTML = ''; hydrate(); return; }
+  if (instant) { sheetGen++; root.innerHTML = ''; hydrate(); return; }
+  const gen = ++sheetGen;
   $$('.sheet, .backdrop', root).forEach((el) => { el.style.transform = ''; el.style.transition = ''; el.classList.add('closing'); });
-  setTimeout(() => { root.innerHTML = ''; hydrate(); }, 260);
+  // если за это время открыли новую шторку — её не трогаем
+  setTimeout(() => { if (gen !== sheetGen) return; root.innerHTML = ''; hydrate(); }, 280);
 }
 function segmented(sheet, sel, onPick, initial) {
   const box = $(sel, sheet);
@@ -294,7 +343,7 @@ function openWallet(tab = 'stars') {
             const { link } = await api('/api/deposit', { amount: Number(inp.value) });
             if (tg?.openInvoice) {
               tg.openInvoice(link, (status) => {
-                if (status === 'paid') { haptic.ok(); burst(innerWidth / 2, innerHeight * .4); island('Звёзды зачислены', 'ok'); closeSheet(); setTimeout(loadMe, 1200); }
+                if (status === 'paid') { haptic.ok(); burst(innerWidth / 2, innerHeight * .4); island('Звёзды зачислены', 'ok'); closeSheet(); setTimeout(() => loadMe().catch(() => {}), 1200); }
                 else if (status === 'failed') island('Оплата не прошла', 'err');
               });
             } else open(link, '_blank');
@@ -325,7 +374,7 @@ function openWallet(tab = 'stars') {
           const btn = e.currentTarget; btn.disabled = true;
           try {
             const r = await api('/api/withdraw', { amount: Number($('#wOut', body).value) });
-            setBalance(r.balance); loadMe(); haptic.ok();
+            setBalance(r.balance); loadMe().catch(() => {}); haptic.ok();
             island(r.pending ? 'Заявка отправлена — ждите подтверждения' : 'Звёзды отправлены', 'ok', r.pending ? 'clock' : 'send'); closeSheet();
           } catch (err) { fail(err); } finally { btn.disabled = false; }
         });
@@ -442,6 +491,9 @@ function renderBets() {
   }).join('') + (more > 0 ? `<div class="empty-row">и ещё ${fmt(more)} ставок</div>` : '') : '<div class="empty-row">Пока никто не поставил — будь первым</div>';
 }
 const betInput = $('#betAmount');
+const cleanInt = (el) => { el.value = String(Math.max(0, Math.floor(Number(el.value) || 0))); };
+betInput.addEventListener('blur', () => cleanInt(betInput));
+$('#upAmount').addEventListener('blur', () => { cleanInt($('#upAmount')); renderUpgrade(); });
 $$('.round-btn').forEach((b) => b.addEventListener('click', () => { haptic.sel(); betInput.value = Math.max(0, (Number(betInput.value) || 0) + Number(b.dataset.step)); }));
 $$('.quick [data-q]').forEach((b) => b.addEventListener('click', () => {
   haptic.sel(); const v = Number(betInput.value) || 0, q = b.dataset.q, bal = S.me?.balance || 0;
@@ -695,7 +747,7 @@ $('#upGo').addEventListener('click', async () => {
     showUpgradeResult(r);
     $('#upAmount').value = 0; S.upTarget = null; coreKey = '-';
     S.spinning = false;
-    loadMe(); loadShop();
+    loadMe().catch(() => {}); loadShop();
   } catch (e) { S.spinning = false; wheel.classList.remove('spinning'); fail(e); renderUpgrade(); }
 });
 function showUpgradeResult(r) {
@@ -750,11 +802,11 @@ function itemActions(it) {
     <button class="btn-ghost" id="iaCancel">Закрыть</button>`, (s) => {
     $('#iaCancel', s).addEventListener('click', () => closeSheet());
     $('#iaSell', s)?.addEventListener('click', async () => {
-      try { const r = await api(`/api/items/${it.id}/sell`, {}); haptic.ok(); setBalance(r.balance); island(`Продано за ${fmt(r.price)}`, 'ok', 'sell'); closeSheet(); loadMe(); } catch (e) { fail(e); }
+      try { const r = await api(`/api/items/${it.id}/sell`, {}); haptic.ok(); setBalance(r.balance); island(`Продано за ${fmt(r.price)}`, 'ok', 'sell'); closeSheet(); loadMe().catch(() => {}); } catch (e) { fail(e); }
     });
     $('#iaOut', s)?.addEventListener('click', async (e) => {
       e.currentTarget.disabled = true;
-      try { await api(`/api/items/${it.id}/withdraw`, {}); haptic.ok(); island('Подарок отправлен в StaticGram', 'ok', 'send'); closeSheet(); loadMe(); } catch (err) { fail(err); }
+      try { await api(`/api/items/${it.id}/withdraw`, {}); haptic.ok(); island('Подарок отправлен в StaticGram', 'ok', 'send'); closeSheet(); loadMe().catch(() => {}); } catch (err) { fail(err); }
     });
   });
 }
@@ -800,19 +852,26 @@ setInterval(tickTimer, 1000);
 
 // ═══════════════ WebSocket ═══════════════
 function setOnline(n) { S.online = n; tweenNum($('#hcOnline'), n, 500); tweenNum($('#rkOnline'), n, 500); }
+let ws, wsTries = 0, wsEverOpen = false, wsTimer = 0;
 function connectWS() {
-  const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?initData=${encodeURIComponent(INIT)}`);
+  clearTimeout(wsTimer);
+  if (ws && ws.readyState <= 1) return;
+  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?initData=${encodeURIComponent(INIT)}`);
+  ws.onopen = () => { wsTries = 0; if (wsEverOpen) { loadMe().catch(() => {}); } wsEverOpen = true; };
   ws.onmessage = (e) => {
-    const m = JSON.parse(e.data);
+    let m; try { m = JSON.parse(e.data); } catch { return; }
     if (m.type === 'crash') onCrashState(m);
     else if (m.type === 'crash_delta') onCrashDelta(m);
     else if (m.type === 'balance') setBalance(m.balance);
-    else if (m.type === 'inventory') { loadMe(); island('Новый подарок в инвентаре', 'ok', 'gift'); }
+    else if (m.type === 'inventory') { loadMe().catch(() => {}); island('Новый подарок в инвентаре', 'ok', 'gift'); }
     else if (m.type === 'online') setOnline(m.n);
     else if (m.type === 'live') { S.live.unshift(m.event); S.live.length = Math.min(S.live.length, 20); renderLive(); }
   };
-  ws.onclose = (e) => { if (e.code !== 4001) setTimeout(connectWS, 1500); };
+  ws.onclose = (e) => { if (e.code !== 4001) wsTimer = setTimeout(connectWS, Math.min(10000, 1000 * 1.6 ** wsTries++)); };
+  ws.onerror = () => { try { ws.close(); } catch {} };
 }
+// вернулись в приложение — сразу переподключаемся и обновляем данные
+document.addEventListener('visibilitychange', () => { if (!document.hidden && INIT && wsEverOpen) { connectWS(); if (S.me) loadMe().catch(() => {}); } });
 
 // ═══════════════ Лендинг (открыто не из StaticGram) ═══════════════
 async function renderLanding() {
