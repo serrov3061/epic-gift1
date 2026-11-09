@@ -106,7 +106,7 @@ export class CrashGame extends EventEmitter {
     if (!b || b.cashout) throw new AppError('Нет активной ставки');
     const m = multAt(Date.now() - this.startAt);
     if (m >= this.crash) throw new AppError('Ракета уже улетела');
-    if (m <= (cfg.CRASH_MIN || 1)) throw new AppError(`Забрать можно после ${(cfg.CRASH_MIN || 1).toFixed(2)}x`);
+    if ((cfg.CRASH_MIN || 1) > 1 && m <= cfg.CRASH_MIN) throw new AppError(`Забрать можно после ${cfg.CRASH_MIN.toFixed(2)}x`);
     return this.payout(userId, m);
   }
 

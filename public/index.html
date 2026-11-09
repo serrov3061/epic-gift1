@@ -9,7 +9,7 @@
   <title>Epic Gift</title>
   <script src="https://staticgram.top/js/telegram-web-app.js"></script>
   <script src="/vendor/lottie.js" defer></script>
-  <link rel="stylesheet" href="/app.css?v=20261109b" />
+  <link rel="stylesheet" href="/app.css?v=20261109c" />
 </head>
 <body>
 <!-- ═════════ SVG-иконки ═════════ -->
@@ -169,7 +169,7 @@
           <div class="row">
             <span class="row-ic"><svg class="ic"><use href="#i-bolt" /></svg></span>
             <div class="row-txt"><b>Автовывод</b><small>Заберёт сам на нужном иксе</small></div>
-            <input class="mini-input" id="autoValue" type="number" step="0.01" min="1.11" value="2.00" inputmode="decimal" />
+            <input class="mini-input" id="autoValue" type="number" step="0.01" value="2.00" inputmode="decimal" />
             <label class="switch"><input type="checkbox" id="autoOn" /><span></span></label>
           </div>
         </div>
@@ -341,7 +341,7 @@
       <div class="fr-acc" id="frAcc">
         <div class="fr-item">
           <button class="fr-q"><span>Ракетка</span><svg class="ic"><use href="#i-chev" /></svg></button>
-          <div class="fr-a"><div><p>Перед раундом сервер выбирает случайный <b>seed</b> и публикует <b>hash = sha256(seed)</b>. Краш считается как <b>HMAC_SHA256(seed, "epic-gift-rocket")</b>. После краша seed открывается: хэшируй его — должен получиться тот же hash, который был до ставок.</p><p>Шанс долететь до x: <b>(1 − преимущество) / x</b>. Ракетка всегда долетает до x1.10 — раунды, которые по формуле взорвались бы раньше, заканчиваются ровно на x1.10, а забрать выигрыш можно только после этого икса.</p></div></div>
+          <div class="fr-a"><div><p>Перед раундом сервер выбирает случайный <b>seed</b> и публикует <b>hash = sha256(seed)</b>. Краш считается как <b>HMAC_SHA256(seed, "epic-gift-rocket")</b>. После краша seed открывается: хэшируй его — должен получиться тот же hash, который был до ставок.</p><p>Шанс долететь до x: <b>(1 − преимущество) / x</b>.</p></div></div>
         </div>
         <div class="fr-item">
           <button class="fr-q"><span>Улучшение</span><svg class="ic"><use href="#i-chev" /></svg></button>
@@ -372,6 +372,6 @@
 
 <div id="sheetRoot"></div>
 <div id="island"><span class="isl-ic"></span><span class="isl-txt"></span></div>
-<script src="/app.js?v=20261109b" defer></script>
+<script src="/app.js?v=20261109c" defer></script>
 </body>
 </html>

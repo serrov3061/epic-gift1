@@ -533,7 +533,7 @@ function updateAction() {
   if (st.phase === 'betting') { if (b) { text = `Ставка ${fmt(b.value)} принята`; cls = 'wait'; } else text = 'Сделать ставку'; }
   else if (st.phase === 'flying') {
     const mNow = multAt(sNow() - st.startAt), mMin = st.crashMin || 1;
-    if (b && !b.cashout && mNow <= mMin) { text = `Забрать можно после ${mMin.toFixed(2)}x`; cls = 'wait'; }
+    if (b && !b.cashout && mMin > 1 && mNow <= mMin) { text = `Забрать можно после ${mMin.toFixed(2)}x`; cls = 'wait'; }
     else if (b && !b.cashout) { text = `Забрать ${fmt(b.value * mNow)}`; cls = 'green'; }
     else if (b) { text = `Выведено x${b.cashout.toFixed(2)} · +${fmt(b.payout)}`; cls = 'wait'; }
     else { text = 'Раунд идёт — ждите следующий'; cls = 'wait'; }
@@ -664,7 +664,7 @@ $('#upTicks').innerHTML = Array.from({ length: 72 }, (_, i) => {
 const upInputValue = () => Number($('#upAmount').value) || 0;
 // та же формула, что на сервере (upgradeEdge в src/upgrade.js): для крупных выплат шанс ниже
 const upEdge = (input, target) => {
-  const c = S.cfg, base = c.upgradeEdge ?? .10;
+  const c = S.cfg, base = c.upgradeEdge ?? .15;
   if (!(input > 0) || !(target > input)) return base;
   const big = Math.min(c.bigMax ?? .25, .05 * Math.log2(1 + (target - input) / (c.bigStep ?? 20000)));
   const m = target / input;
@@ -682,7 +682,7 @@ let coreKey = '';
 function renderUpgrade(gridToo = true) {
   const input = upInputValue();
   tweenNum($('#upInputValue'), input, 400);
-  const maxC = S.cfg.maxChance ?? .80, minC = S.cfg.minChance ?? .01, ok = (c) => c >= minC && c <= maxC;
+  const maxC = S.cfg.maxChance ?? .75, minC = S.cfg.minChance ?? .01, ok = (c) => c >= minC && c <= maxC;
   if (gridToo) {
     const grid = $('#upTargets');
     if (S.upSeg === 'items') {
@@ -695,7 +695,7 @@ function renderUpgrade(gridToo = true) {
         : Array.from({ length: 6 }, () => '<div class="skel" style="aspect-ratio:.8"></div>').join('');
     } else {
       grid.innerHTML = (S.cfg.multipliers || []).map((mu, i) => {
-        const c = input > 0 ? chanceFor(input, input * mu) : (1 - (S.cfg.upgradeEdge ?? .10)) / mu;
+        const c = input > 0 ? chanceFor(input, input * mu) : (1 - (S.cfg.upgradeEdge ?? .15)) / mu;
         return `<button class="nft mult reveal ${S.upTarget?.type === 'mult' && S.upTarget.mult === mu ? 'sel' : ''} ${ok(c) && !overPayout(input * mu) ? '' : 'dim'}" style="--i:${i}" data-mult="${mu}">
           <b>x${mu}</b><small>${pct(c)} · ${STAR}${fmt(input * mu)}</small></button>`;
       }).join('');
@@ -883,7 +883,7 @@ setInterval(tickTimer, 1000);
 
 
 // ═══════════════ ЧЕСТНОСТЬ ═══════════════
-const F = { loaded: false, rounds: [], edge: .05, salt: 'epic-gift-rocket', crashMax: 100, crashMin: 1, open: new Set(), shown: new Set(), busy: false };
+const F = { loaded: false, rounds: [], edge: .12, salt: 'epic-gift-rocket', crashMax: 1000, crashMin: 1, open: new Set(), shown: new Set(), busy: false };
 const hexOf = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 const utf8 = (t) => new TextEncoder().encode(t);
 const sha256Hex = async (t) => hexOf(await crypto.subtle.digest('SHA-256', utf8(t)));
