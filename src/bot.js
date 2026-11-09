@@ -348,17 +348,17 @@ export function startBot() {
     const sum = (type) => db.prepare('SELECT COALESCE(SUM(amount),0) s, COUNT(*) c FROM tx WHERE user_id=? AND type=?').get(u.id, type);
     const dep = db.prepare('SELECT COALESCE(SUM(amount),0) s, COUNT(*) c FROM payments WHERE user_id=?').get(u.id);
     const wd = db.prepare("SELECT COALESCE(SUM(CASE WHEN status='done' THEN amount END),0) done, COALESCE(SUM(CASE WHEN status IN ('pending','queued','processing') THEN amount END),0) wait, COUNT(*) c FROM withdrawals WHERE user_id=?").get(u.id);
-    const cb = sum('crash_bet'), cw = sum('crash_win'), ub = sum('upgrade_bet'), uw = sum('upgrade_win');
+    const cb = sum('crash_bet'), cw = sum('crash_win'), ub = sum('upgrade_bet'), uw = sum('upgrade_win'), pb = sum('pickaxe_bet'), pw = sum('pickaxe_win');
     const sell = sum('sell'), ref = sum('ref_bonus'), adm = sum('admin');
     const refs = db.prepare('SELECT COUNT(*) c FROM users WHERE ref_by=?').get(u.id).c;
     const items = db.prepare("SELECT COUNT(*) c FROM items WHERE owner_id=? AND status='available'").get(u.id).c;
-    const crashProfit = cw.s + cb.s, upProfit = uw.s + ub.s; // ставки хранятся с минусом
+    const crashProfit = cw.s + cb.s, upProfit = uw.s + ub.s, pickProfit = pw.s + pb.s; // ставки хранятся с минусом
     const inflow = dep.s + ref.s + adm.s + sell.s, outflow = wd.done + wd.wait;
     const flags = [];
     if (outflow > dep.s) flags.push(`⚠️ вывел/выводит больше, чем пополнил (+${outflow - dep.s} ⭐)`);
     if (adm.s > 0) flags.push(`ℹ️ получал звёзды от админа: ${adm.s} ⭐`);
     if (refs >= 3 && ref.s > dep.s) flags.push(`⚠️ реф-бонусов (${ref.s}) больше, чем своих пополнений — проверь рефералов на мультиаккаунты`);
-    if (u.balance > inflow + crashProfit + upProfit - outflow + 1) flags.push('⚠️ баланс не сходится с историей');
+    if (u.balance > inflow + crashProfit + upProfit + pickProfit - outflow + 1) flags.push('⚠️ баланс не сходится с историей');
 
     const head = `📋 <b>${u.first_name}</b>${u.username ? ' @' + u.username : ''} · id <code>${u.id}</code>
 Зарегистрирован: ${dt(u.created_at)}${u.ref_by ? ` · пригласил id ${u.ref_by}` : ''}
@@ -368,12 +368,13 @@ export function startBot() {
 ➖ Вывел: ${wd.done} ⭐${wd.wait ? ` · ждёт: ${wd.wait} ⭐` : ''} · заявок: ${wd.c}
 🚀 Ракетка: ставок ${-cb.s} ⭐ (${cb.c}) · выиграл ${cw.s} ⭐ → ${crashProfit >= 0 ? '+' : ''}${crashProfit} ⭐
 ⬆️ Улучшение: ставок ${-ub.s} ⭐ (${ub.c}) · выиграл ${uw.s} ⭐ → ${upProfit >= 0 ? '+' : ''}${upProfit} ⭐
+⛏ Кирка: ставок ${-pb.s} ⭐ (${pb.c}) · выиграл ${pw.s} ⭐ → ${pickProfit >= 0 ? '+' : ''}${pickProfit} ⭐
 🎁 NFT в инвентаре: ${items} · продал на ${sell.s} ⭐
 👥 Рефералов: ${refs} · бонусов ${ref.s} ⭐${adm.s ? `\n🛠 От админа: ${adm.s} ⭐` : ''}
 ${flags.length ? '\n' + flags.join('\n') : '\n✅ Подозрительного не найдено'}`;
 
     const NAMES = { deposit: '➕ пополнение', withdraw: '➖ вывод', withdraw_refund: '↩️ возврат вывода', crash_bet: '🚀 ставка', crash_win: '🚀 выигрыш',
-      upgrade_bet: '⬆️ ставка', upgrade_win: '⬆️ выигрыш', sell: '🎁 продажа NFT', ref_bonus: '👥 реф-бонус', admin: '🛠 админ', dev: '🧪 dev' };
+      upgrade_bet: '⬆️ ставка', upgrade_win: '⬆️ выигрыш', pickaxe_bet: '⛏ ставка', pickaxe_win: '⛏ выигрыш', sell: '🎁 продажа NFT', ref_bonus: '👥 реф-бонус', admin: '🛠 админ', dev: '🧪 dev' };
     const rows = db.prepare("SELECT * FROM tx WHERE user_id=? AND type != 'wager' ORDER BY id DESC LIMIT 5000").all(u.id);
     const line = (r) => {
       let m = {}; try { m = JSON.parse(r.meta || '{}'); } catch {}

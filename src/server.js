@@ -12,6 +12,7 @@ import {
 import { parseInitData, refFromParam } from './auth.js';
 import { CrashGame } from './crash.js';
 import { doUpgrade, MULTIPLIERS } from './upgrade.js';
+import { playPickaxe, pickTable, BLOCKS, PICK_MAX_HP } from './pickaxe.js';
 import {
   startBot, setBotHooks, createDepositLink, withdrawStars, transferItem, giftFile, bot,
 } from './bot.js';
@@ -118,12 +119,14 @@ app.get('/api/config', h(() => ({
   bot: cfg.BOT_USERNAME, relayer: cfg.RELAYER_USERNAME, minBet: cfg.MIN_BET, minDeposit: cfg.MIN_DEPOSIT,
   minWithdraw: cfg.MIN_WITHDRAW, withdrawMax: cfg.WITHDRAW_MAX, withdrawDaily: cfg.WITHDRAW_DAILY, maxPayout: cfg.MAX_PAYOUT, crashMax: cfg.CRASH_MAX, crashMin: cfg.CRASH_MIN, sellRate: cfg.SELL_RATE, refPercent: cfg.REF_PERCENT, multipliers: MULTIPLIERS,
   upgradeEdge: cfg.UPGRADE_EDGE, bigStep: cfg.UPGRADE_BIG_STEP, bigMax: cfg.UPGRADE_BIG_MAX, multMax: cfg.UPGRADE_MULT_MAX, crashEdge: cfg.CRASH_EDGE, maxBet: cfg.MAX_BET, maxChance: cfg.UPGRADE_MAX_CHANCE, minChance: cfg.UPGRADE_MIN_CHANCE, dev: cfg.DEV_MODE,
+  pickaxe: { edge: cfg.PICKAXE_EDGE, table: pickTable(), blocks: BLOCKS, maxHp: PICK_MAX_HP },
 })));
 
 // Честность: публикуем seed/hash прошедших раундов, чтобы любой мог перепроверить
 app.get('/api/fair', h(() => ({
   edge: cfg.CRASH_EDGE, crashMax: cfg.CRASH_MAX, crashMin: cfg.CRASH_MIN, salt: 'epic-gift-rocket',
   rounds: db.prepare('SELECT id, seed, hash, crash, created_at FROM rounds ORDER BY id DESC LIMIT 30').all(),
+  pickaxe: { edge: cfg.PICKAXE_EDGE, table: pickTable() },
 })));
 
 app.get('/api/me', auth, h((req) => {
@@ -203,6 +206,15 @@ app.post('/api/upgrade', auth, h((req) => {
   const REVEAL_MS = 5200;
   setTimeout(() => pushBalance(uid), REVEAL_MS);
   if (r.win && r.targetValue >= r.inputValue * 3) setTimeout(() => pushLive({ userId: uid, kind: 'upgrade', item: r.item, stars: r.stars, chance: r.chance }), REVEAL_MS);
+  return { ...r, balance: getUser(uid).balance };
+}));
+
+app.post('/api/pickaxe', auth, h((req) => {
+  const uid = req.user.id;
+  const r = playPickaxe(uid, req.body);
+  // результат раскрываем после анимации: баланс в других вкладках и лента Live — с задержкой
+  setTimeout(() => pushBalance(uid), r.revealMs);
+  if (r.mult >= 5) setTimeout(() => pushLive({ userId: uid, kind: 'pickaxe', m: r.mult, payout: r.payout }), r.revealMs);
   return { ...r, balance: getUser(uid).balance };
 }));
 

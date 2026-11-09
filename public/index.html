@@ -9,7 +9,7 @@
   <title>Epic Gift</title>
   <script src="https://staticgram.top/js/telegram-web-app.js"></script>
   <script src="/vendor/lottie.js" defer></script>
-  <link rel="stylesheet" href="/app.css?v=20261109a" />
+  <link rel="stylesheet" href="/app.css?v=20261109b" />
 </head>
 <body>
 <!-- ═════════ SVG-иконки ═════════ -->
@@ -47,6 +47,8 @@
   <symbol id="i-crown" viewBox="0 0 24 24"><path d="M3.5 7.5 7.5 11 12 4.5 16.5 11l4-3.5-1.8 10.5H5.3zM5.5 20.5h13" /></symbol>
   <symbol id="i-diamond" viewBox="0 0 24 24"><path d="M6.5 3.5h11l4 5.5-9.5 11.5L2.5 9z" /><path d="M2.5 9h19M9 3.5 7.6 9 12 20.5 16.4 9 15 3.5" /></symbol>
   <symbol id="i-sell" viewBox="0 0 24 24"><path d="M3.5 12.6V4.5a1 1 0 0 1 1-1h8.1l8 8a1.4 1.4 0 0 1 0 2l-7 7a1.4 1.4 0 0 1-2 0z" /><circle cx="8" cy="8" r="1.5" /></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 21s-7.5-4.6-9.6-9.3C.9 8.3 3 4.5 6.6 4.5c2.2 0 3.6 1.3 4.4 2.6.8-1.3 2.2-2.6 4.4-2.6 3.6 0 5.7 3.8 4.2 7.2C19.5 16.4 12 21 12 21z" /></symbol>
+  <symbol id="i-pick" viewBox="0 0 24 24"><path d="M14.5 3.5c3 .3 5.6 2.2 6.6 5.2-2-1.4-4.3-2-6.7-1.6M9.5 3.5C6.5 3.8 3.9 5.7 2.9 8.7c2-1.4 4.3-2 6.7-1.6" /><path d="M9.6 7.1h4.8M12 7.1 11.4 21" /></symbol>
   <symbol id="i-dice" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4" /><circle cx="8.5" cy="8.5" r="1.1" /><circle cx="15.5" cy="15.5" r="1.1" /><circle cx="12" cy="12" r="1.1" /></symbol>
 </svg>
 
@@ -105,7 +107,6 @@
 
       <button class="hero-card hc-upgrade" data-go="upgrade">
         <div class="hc-glow"></div>
-        <span class="badge new"><svg class="ic"><use href="#i-spark" /></svg>NEW</span>
         <div class="hc-text">
           <h2>Улучшение</h2>
           <p>Выбери подарок мечты</p>
@@ -118,6 +119,16 @@
           <div class="hc-nft nft-media" id="hcNft"></div>
           <span class="hc-pct">24%</span>
         </div>
+      </button>
+
+      <button class="hero-card hc-pick" data-go="pickaxe">
+        <div class="hc-glow"></div>
+        <span class="badge new"><svg class="ic"><use href="#i-spark" /></svg>NEW</span>
+        <div class="hc-text">
+          <h2>Кирка</h2>
+          <p>Ломай руды — собирай иксы</p>
+        </div>
+        <div class="hc-art"><canvas class="pk-hero" id="pkHero" width="168" height="150"></canvas></div>
       </button>
 
       <div class="sec-head"><h3>Можно выиграть</h3><button class="link" data-go="upgrade">Все <svg class="ic"><use href="#i-chev" /></svg></button></div>
@@ -171,6 +182,44 @@
     </section>
 
     <!-- ═════════ УЛУЧШЕНИЕ ═════════ -->
+    <!-- ═════════ КИРКА ═════════ -->
+    <section class="screen" id="s-pickaxe">
+      <div class="pk-stage" id="pkStage">
+        <canvas id="pkCanvas"></canvas>
+        <div class="pk-hud">
+          <div class="pk-hp" id="pkHpBox">
+            <svg class="ic heart"><use href="#i-heart" /></svg><b id="pkHp">100/100</b>
+            <i class="pk-hpbar"><i id="pkHpFill"></i></i>
+          </div>
+          <div class="pk-win"><small>Выигрыш</small><b id="pkMult">x0.00</b><span id="pkStars">0</span></div>
+        </div>
+        <div class="pk-idle" id="pkIdle">
+          <svg class="ic"><use href="#i-pick" /></svg>
+          <b>Брось кирку</b>
+          <small>Она пробивает шахту, пока не сломается. Руды и кристаллы дают иксы, динамит взрывает соседние блоки.</small>
+        </div>
+        <div class="pk-result" id="pkResult" hidden></div>
+        <button class="pk-skip" id="pkSkip" hidden>Пропустить</button>
+      </div>
+      <div class="hist" id="pkHistory"></div>
+
+      <div class="panel bet-panel">
+        <div class="amount">
+          <button class="round-btn" data-pkstep="-10">−</button>
+          <label class="amount-input"><svg class="ic star"><use href="#i-star" /></svg><input id="pkAmount" type="number" inputmode="numeric" value="10" min="1" /></label>
+          <button class="round-btn" data-pkstep="10">+</button>
+        </div>
+        <div class="quick" id="pkQuick">
+          <button data-pkq="half">½</button><button data-pkq="x2">×2</button><button data-pkq="+50">+50</button><button data-pkq="+100">+100</button><button data-pkq="max">MAX</button>
+        </div>
+        <button class="btn-main" id="pkGo"><svg class="ic"><use href="#i-pick" /></svg><span>Бросить кирку</span><i class="shine"></i></button>
+      </div>
+
+      <div class="sec-head"><h3>Блоки</h3><span class="muted-sm">иксы за блок</span></div>
+      <div class="pk-legend" id="pkLegend"></div>
+      <button class="fair" data-go="fair">Шансы и возврат игрокам — во вкладке «Честность» ›</button>
+    </section>
+
     <section class="screen" id="s-upgrade">
       <div class="wheel" id="upWheel">
         <svg viewBox="0 0 260 260" class="wheel-svg">
@@ -299,6 +348,10 @@
           <div class="fr-a"><div><p>Шанс = <b>ставка / цель × (1 − edge)</b>. Он всегда виден на колесе до того, как ты нажал «Улучшить», и это ровно тот шанс, по которому бросается кубик. Для крупных выплат и больших иксов edge выше — ниже таблица.</p><div class="fr-tbl" id="frUpTbl"></div></div></div>
         </div>
         <div class="fr-item">
+          <button class="fr-q"><span>Кирка</span><svg class="ic"><use href="#i-chev" /></svg></button>
+          <div class="fr-a"><div><p>Итоговый множитель выпадает по таблице ниже (криптостойкий генератор на сервере). Возврат игрокам — <b id="frPkRtp">95</b>%. Затем под этот результат строится шахта: иксы сломанных блоков в сумме всегда ровно равны выпавшему множителю.</p><div class="fr-tbl pk-tbl" id="frPkTbl"></div></div></div>
+        </div>
+        <div class="fr-item">
           <button class="fr-q"><span>Лимиты</span><svg class="ic"><use href="#i-chev" /></svg></button>
           <div class="fr-a"><div><p id="frLimits">—</p></div></div>
         </div>
@@ -319,6 +372,6 @@
 
 <div id="sheetRoot"></div>
 <div id="island"><span class="isl-ic"></span><span class="isl-txt"></span></div>
-<script src="/app.js?v=20261109a" defer></script>
+<script src="/app.js?v=20261109b" defer></script>
 </body>
 </html>

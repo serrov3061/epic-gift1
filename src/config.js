@@ -32,6 +32,10 @@ export const cfg = {
   MAX_BET: num(process.env.MAX_BET, 100000),
   MAX_PAYOUT: num(process.env.MAX_PAYOUT, 0),         // потолок выигрыша звёздами за одну игру (0 = без потолка)
 
+  // Кирка
+  PICKAXE_EDGE: num(process.env.PICKAXE_EDGE, 0.05), // преимущество казино 5%
+  PICKAXE_MAX: num(process.env.PICKAXE_MAX, 100),     // максимальный множитель кирки
+
   // Апгрейдер
   UPGRADE_EDGE: num(process.env.UPGRADE_EDGE, 0.10),
   // надбавка к преимуществу казино для крупных выигрышей: чем больше (цель − ставка) и множитель, тем ниже шанс

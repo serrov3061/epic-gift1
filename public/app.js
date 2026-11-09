@@ -192,8 +192,8 @@ function nftCard(it, { sel = false, dim = false, chance = null, anim = false, i 
 }
 
 // ═══════════════ Навигация ═══════════════
-const ORDER = ['inventory', 'friends', 'home', 'rating', 'fair', 'rocket', 'upgrade'];
-const GAME = ['rocket', 'upgrade'];
+const ORDER = ['inventory', 'friends', 'home', 'rating', 'fair', 'rocket', 'upgrade', 'pickaxe'];
+const GAME = ['rocket', 'upgrade', 'pickaxe'];
 let current = 'home';
 function moveInd(container, ind, active) {
   if (!active) { ind.style.opacity = 0; return; }
@@ -247,6 +247,8 @@ function go(name) {
   if (name === 'inventory') renderInventory();
   if (name === 'fair') { renderFairLive(); if (F.loaded) renderFair(); loadFair(F.loaded); }
   if (name === 'rocket') { resizeCanvas(); renderBets(); }
+  if (name === 'pickaxe') pkResize();
+  if (name === 'fair') renderPkFair();
   hydrate();
 }
 $$('.tabbar button').forEach((b) => b.addEventListener('click', () => go(b.dataset.tab)));
@@ -398,6 +400,7 @@ function renderLive() {
   const el = $('#liveList');
   if (!S.live.length) { el.innerHTML = `<div class="live-empty">${ic('spark')}Здесь появятся крупные выигрыши</div>`; return; }
   el.innerHTML = S.live.map((e) => {
+    if (e.kind === 'pickaxe') return `<div class="live-item rk" style="background:radial-gradient(circle at 50% 30%,#10b981,#1e1036)">${ic('pick')}<span>x${e.m}</span></div>`;
     if (e.kind === 'upgrade' && e.item) return `<div class="live-item" style="background:${giftBg(e.item)}">${nftMedia(e.item)}<span>${Math.round(e.chance * 100)}%</span></div>`;
     if (e.kind === 'upgrade') return `<div class="live-item rk">${ic('up')}<span>+${fmt(e.stars)}</span></div>`;
     return `<div class="live-item rk">${ic('rocket')}<span>x${e.m.toFixed(2)}</span></div>`;
@@ -503,8 +506,8 @@ const betInput = $('#betAmount');
 const cleanInt = (el) => { el.value = String(Math.max(0, Math.floor(Number(el.value) || 0))); };
 betInput.addEventListener('blur', () => cleanInt(betInput));
 $('#upAmount').addEventListener('blur', () => { const v = $('#upAmount').value; cleanInt($('#upAmount')); if ($('#upAmount').value !== v) renderUpgrade(); });
-$$('.round-btn').forEach((b) => b.addEventListener('click', () => { haptic.sel(); betInput.value = Math.max(0, (Number(betInput.value) || 0) + Number(b.dataset.step)); }));
-$$('.quick [data-q]').forEach((b) => b.addEventListener('click', () => {
+$$('#s-rocket .round-btn').forEach((b) => b.addEventListener('click', () => { haptic.sel(); betInput.value = Math.max(0, (Number(betInput.value) || 0) + Number(b.dataset.step)); }));
+$$('#s-rocket .quick [data-q]').forEach((b) => b.addEventListener('click', () => {
   haptic.sel(); const v = Number(betInput.value) || 0, q = b.dataset.q, bal = S.me?.balance || 0;
   betInput.value = q === 'half' ? Math.floor(v / 2) : q === 'x2' ? Math.min(bal, v * 2) : q === 'max' ? bal : Math.min(bal, v + Number(q));
 }));
@@ -1034,6 +1037,311 @@ $('#frCheck').addEventListener('click', async () => {
   finally { F.busy = false; btn.classList.remove('wait'); $('span', btn).textContent = 'Проверить'; }
 });
 
+
+// ═══════════════ КИРКА ═══════════════
+const PK = { cv: $('#pkCanvas'), tex: {}, world: null, playing: false, speed: 1, hist: [], W: 0, H: 0, DPR: 1, cs: 0, camY: -4, parts: [], pops: [], shake: 0 };
+PK.ctx = PK.cv.getContext('2d');
+const PK_COLS = 7;
+const PK_NAMES = { stone: 'Камень', coal: 'Уголь', gold: 'Золотая руда', ruby: 'Рубин', sapphire: 'Сапфир', emerald: 'Изумруд', goldblock: 'Слиток', diamond: 'Алмаз', amethyst: 'Аметист', chest: 'Сундук', tnt: 'Динамит' };
+const PK_VALUES = { coal: 10, gold: 20, ruby: 30, sapphire: 50, emerald: 100, goldblock: 200, diamond: 500, amethyst: 1000, chest: 2500 };
+const PK_COLORS = { stone: '#6a6e7c', deep: '#4a4d59', coal: '#26262e', gold: '#f5c542', ruby: '#f43f5e', sapphire: '#3b82f6', emerald: '#22c55e', goldblock: '#fbbf24', diamond: '#67e8f9', amethyst: '#a855f7', chest: '#a16207', tnt: '#dc2626', moss: '#8b5cf6', dirt: '#6b4a33' };
+const HARDC = { stone: 1, coal: 1, gold: 2, ruby: 2, sapphire: 2, emerald: 2, goldblock: 2, diamond: 3, amethyst: 3, chest: 2, tnt: 1 };
+
+function mulberry(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const strSeed = (s) => [...s].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0, 2166136261);
+
+// ── пиксельные текстуры 16×16 (оригинальные, рисуются кодом) ──
+function makeTex(kind) {
+  const c = document.createElement('canvas'); c.width = c.height = 16;
+  const g = c.getContext('2d'); const r = mulberry(strSeed(kind));
+  const px = (x, y, col) => { g.fillStyle = col; g.fillRect(x, y, 1, 1); };
+  const noise = (pal, w) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { let k = r() * w.reduce((a, b) => a + b), i = 0; while ((k -= w[i]) > 0) i++; px(x, y, pal[i]); } };
+  const stone = (dark) => noise(dark ? ['#3f424d', '#4a4d59', '#353842', '#565a67'] : ['#5f6371', '#6a6e7c', '#535664', '#787c8b'], [5, 4, 2, 2]);
+  const ore = (main, light, dark, n = 5) => {
+    stone(false);
+    for (let k = 0; k < n; k++) {
+      const x0 = 1 + Math.floor(r() * 12), y0 = 1 + Math.floor(r() * 12);
+      [[0, 0, main], [1, 0, light], [0, 1, dark], [1, 1, main], [2, 1, r() < .5 ? main : dark]].forEach(([dx, dy, col]) => px(x0 + dx, y0 + dy, col));
+    }
+  };
+  const gem = (main, light, dark, deep) => {
+    g.fillStyle = main; g.fillRect(0, 0, 16, 16);
+    g.fillStyle = dark; g.fillRect(0, 15, 16, 1); g.fillRect(15, 0, 1, 16);
+    g.fillStyle = light; g.fillRect(0, 0, 16, 1); g.fillRect(0, 0, 1, 16);
+    g.fillStyle = deep; g.fillRect(3, 3, 10, 10);
+    g.fillStyle = main; g.fillRect(4, 4, 8, 8);
+    for (let i = 0; i < 5; i++) px(5 + i, 9 - i, light);
+    px(11, 5, '#ffffff'); px(10, 4, light);
+  };
+  switch (kind) {
+    case 'stone': stone(false); break;
+    case 'deep': stone(true); break;
+    case 'dirt': noise(['#5a3d2b', '#6b4a33', '#4b3223', '#7a5539'], [4, 4, 2, 1]); break;
+    case 'moss': noise(['#5a3d2b', '#6b4a33', '#4b3223'], [4, 3, 2]); for (let x = 0; x < 16; x++) { const h = 3 + Math.floor(r() * 3); for (let y = 0; y < h; y++) px(x, y, ['#8b5cf6', '#7c3aed', '#a78bfa', '#6d28d9'][Math.floor(r() * 4)]); } break;
+    case 'cave': noise(['#1b1726', '#221d31', '#17131f', '#2a2440'], [5, 3, 3, 1]); break;
+    case 'coal': ore('#1c1c22', '#3a3a44', '#0e0e12', 6); break;
+    case 'gold': ore('#f5c542', '#fde68a', '#b7791f'); break;
+    case 'ruby': ore('#f43f5e', '#fda4af', '#9f1239'); break;
+    case 'sapphire': ore('#3b82f6', '#93c5fd', '#1e3a8a'); break;
+    case 'emerald': gem('#22c55e', '#86efac', '#14532d', '#16a34a'); break;
+    case 'goldblock': gem('#fbbf24', '#fef08a', '#92400e', '#f59e0b'); break;
+    case 'diamond': gem('#67e8f9', '#cffafe', '#0e7490', '#22d3ee'); break;
+    case 'amethyst': {
+      noise(['#2e1065', '#3b0764', '#4c1d95'], [3, 2, 2]);
+      [[3, 13, 7], [7, 14, 10], [11, 13, 6], [5, 12, 5], [13, 14, 4]].forEach(([x, y, h]) => { for (let i = 0; i < h; i++) { px(x, y - i, i > h - 3 ? '#e9d5ff' : '#a855f7'); if (i < h - 2) px(x + 1, y - i, '#7e22ce'); } });
+      break;
+    }
+    case 'chest': {
+      g.fillStyle = '#8a5a2b'; g.fillRect(0, 0, 16, 16);
+      g.fillStyle = '#a16b36'; for (let y = 1; y < 16; y += 3) g.fillRect(1, y, 14, 1);
+      g.fillStyle = '#4a2d12'; g.fillRect(0, 0, 16, 1); g.fillRect(0, 15, 16, 1); g.fillRect(0, 0, 1, 16); g.fillRect(15, 0, 1, 16); g.fillRect(0, 6, 16, 1);
+      g.fillStyle = '#fbbf24'; g.fillRect(6, 5, 4, 4); g.fillStyle = '#92400e'; g.fillRect(7, 7, 2, 1);
+      g.fillStyle = '#fde68a'; g.fillRect(1, 1, 2, 1); g.fillRect(13, 1, 2, 1);
+      break;
+    }
+    case 'tnt': {
+      g.fillStyle = '#7f1d1d'; g.fillRect(0, 0, 16, 16);
+      for (let x = 1; x < 15; x += 3) { g.fillStyle = '#dc2626'; g.fillRect(x, 2, 2, 13); g.fillStyle = '#f87171'; g.fillRect(x, 2, 1, 13); }
+      g.fillStyle = '#fde68a'; g.fillRect(0, 7, 16, 3); g.fillStyle = '#1f2937'; [2, 6, 10, 13].forEach((x) => g.fillRect(x, 8, 1, 1));
+      g.fillStyle = '#1f2937'; g.fillRect(7, 0, 1, 2); g.fillStyle = '#fb923c'; g.fillRect(8, 0, 1, 1);
+      break;
+    }
+    case 'crack1': case 'crack2': case 'crack3': {
+      const lv = Number(kind.slice(-1)); g.fillStyle = 'rgba(0,0,0,.55)';
+      const lines = [[[8, 8], [5, 4], [3, 2]], [[8, 8], [12, 11], [14, 14]], [[8, 8], [11, 4], [13, 1]], [[8, 8], [4, 12], [1, 14]]];
+      lines.slice(0, lv + 1).forEach((pts) => { for (let i = 0; i < pts.length - 1; i++) { const [x0, y0] = pts[i], [x1, y1] = pts[i + 1]; const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)); for (let k = 0; k <= n; k++) px(Math.round(x0 + ((x1 - x0) * k) / n), Math.round(y0 + ((y1 - y0) * k) / n), 'rgba(0,0,0,.6)'); } });
+      break;
+    }
+  }
+  return c;
+}
+function makePick() {
+  const c = document.createElement('canvas'); c.width = c.height = 32; const g = c.getContext('2d');
+  g.imageSmoothingEnabled = false; g.lineCap = 'square';
+  // рукоять
+  g.strokeStyle = '#3b2412'; g.lineWidth = 5; g.beginPath(); g.moveTo(5, 28); g.lineTo(19, 14); g.stroke();
+  g.strokeStyle = '#a16b36'; g.lineWidth = 3; g.beginPath(); g.moveTo(5, 28); g.lineTo(19, 14); g.stroke();
+  g.strokeStyle = '#d4a373'; g.lineWidth = 1; g.beginPath(); g.moveTo(5, 27); g.lineTo(18, 14); g.stroke();
+  // навершие-кристалл
+  const head = (w, col) => { g.strokeStyle = col; g.lineWidth = w; g.beginPath(); g.moveTo(8, 5); g.quadraticCurveTo(29, 2, 27, 24); g.stroke(); };
+  head(7, '#2e1065'); head(5, '#7c3aed'); head(2.5, '#c4b5fd');
+  g.fillStyle = '#ffffff'; g.fillRect(19, 5, 2, 2);
+  const out = document.createElement('canvas'); out.width = out.height = 16; const o = out.getContext('2d');
+  o.imageSmoothingEnabled = false; o.drawImage(c, 0, 0, 16, 16); // пикселизация
+  return out;
+}
+function pkTex(k) { return PK.tex[k] || (PK.tex[k] = k === 'pick' ? makePick() : makeTex(k)); }
+
+// ── мир: шахта под результат с сервера ──
+function buildWorld(events, seed) {
+  const r = mulberry(seed);
+  const grid = new Map(); const key = (c, y) => `${c},${y}`;
+  let y = 2, col = 3; const path = [];
+  events.forEach((e, i) => {
+    y += 1 + e.gap + (i > 0 && events[i - 1].k === 'tnt' ? 1 : 0);
+    path.push({ ...e, c: e.col, y });
+  });
+  const maxY = (path.at(-1)?.y || 10) + 10;
+  for (let yy = 0; yy <= maxY; yy++) for (let c = 0; c < PK_COLS; c++) {
+    let k = yy === 0 ? 'moss' : yy < 3 ? 'dirt' : yy > 26 ? 'deep' : 'stone';
+    if (yy >= 3) { const q = r(); if (q < .07) k = 'cave'; else if (q < .13) k = ['coal', 'coal', 'gold', 'ruby'][Math.floor(r() * 4)]; }
+    grid.set(key(c, yy), k);
+  }
+  // проход кирки: из клетки предыдущего блока вбок, затем вниз
+  let pc = 3, py = -4;
+  path.forEach((p) => {
+    for (let c = Math.min(pc, p.c); c <= Math.max(pc, p.c); c++) if (py >= 0) grid.set(key(c, py), 'cave');
+    for (let yy = Math.max(0, py + 1); yy < p.y; yy++) grid.set(key(p.c, yy), 'cave');
+    grid.set(key(p.c, p.y), p.k);
+    if (p.k === 'tnt') {
+      const spots = [[-1, 0], [1, 0], [-1, 1], [1, 1]].sort(() => r() - .5);
+      p.cells = p.parts.map((k, i) => { const [dx, dy] = spots[i % 4]; const cell = [p.c + dx, p.y + dy, k]; grid.set(key(cell[0], cell[1]), k); return cell; });
+    }
+    pc = p.c; py = p.y;
+  });
+  return { grid, key, path, maxY };
+}
+
+// ── рендер ──
+function pkResize() {
+  PK.DPR = Math.min(LOW_END ? 1.25 : 2, devicePixelRatio || 1);
+  PK.W = PK.cv.clientWidth; PK.H = PK.cv.clientHeight;
+  PK.cv.width = PK.W * PK.DPR; PK.cv.height = PK.H * PK.DPR; PK.cs = PK.W / PK_COLS;
+}
+addEventListener('resize', () => current === 'pickaxe' && pkResize());
+const pick = { x: 3, y: -3, rot: -.5, show: true, crack: 0, target: null };
+function pkFrame(t) {
+  requestAnimationFrame(pkFrame);
+  if (current !== 'pickaxe' || document.hidden) return;
+  if (!PK.W) pkResize();
+  const { ctx, cs, W, H } = PK; const w = PK.world;
+  ctx.setTransform(PK.DPR, 0, 0, PK.DPR, 0, 0); ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, W, H);
+  // камера
+  const want = (w ? pick.y : -3) - (H / cs) * 0.38;
+  PK.camY += (want - PK.camY) * 0.12;
+  const sx = PK.shake ? (Math.random() - .5) * PK.shake : 0, sy = PK.shake ? (Math.random() - .5) * PK.shake : 0;
+  PK.shake *= 0.86; if (PK.shake < .3) PK.shake = 0;
+  ctx.save(); ctx.translate(sx, sy);
+  const y0 = Math.floor(PK.camY), y1 = Math.ceil(PK.camY + H / cs) + 1;
+  // небо
+  const skyBottom = (0 - PK.camY) * cs;
+  if (skyBottom > 0) {
+    const sg = ctx.createLinearGradient(0, 0, 0, skyBottom);
+    sg.addColorStop(0, '#1a0b3a'); sg.addColorStop(1, '#4c1d95'); ctx.fillStyle = sg; ctx.fillRect(0, 0, W, skyBottom);
+    ctx.fillStyle = 'rgba(255,255,255,.7)';
+    for (let i = 0; i < 18; i++) { const x = (i * 97) % W, yy = ((i * 53) % Math.max(1, skyBottom)); ctx.fillRect(x, yy, 2, 2); }
+  }
+  for (let yy = Math.max(0, y0); yy <= y1; yy++) for (let c = 0; c < PK_COLS; c++) {
+    const k = (w?.grid.get(w.key(c, yy))) || (yy === 0 ? 'moss' : yy < 3 ? 'dirt' : 'stone');
+    const px = c * cs, py = (yy - PK.camY) * cs;
+    ctx.drawImage(pkTex(k === 'air' ? 'cave' : k), px, py, cs + .5, cs + .5);
+    if (k !== 'cave' && k !== 'air' && yy > 2) { ctx.fillStyle = `rgba(5,4,10,${Math.min(.45, (yy - 3) * .012)})`; ctx.fillRect(px, py, cs + .5, cs + .5); }
+    if (pick.target && pick.target[0] === c && pick.target[1] === yy && pick.crack > 0) ctx.drawImage(pkTex(`crack${Math.min(3, pick.crack)}`), px, py, cs, cs);
+  }
+  // частицы
+  PK.parts = PK.parts.filter((p) => p.life > 0);
+  for (const p of PK.parts) { p.vy += .35; p.x += p.vx; p.y += p.vy; p.life -= .025; ctx.globalAlpha = Math.max(0, p.life); ctx.fillStyle = p.c; ctx.fillRect(p.x, p.y - PK.camY * cs, p.s, p.s); }
+  ctx.globalAlpha = 1;
+  // кирка
+  if (pick.show) {
+    const px = (pick.x + .5) * cs, py = (pick.y + .5 - PK.camY) * cs;
+    ctx.save(); ctx.translate(px, py); ctx.rotate(pick.rot);
+    ctx.shadowColor = 'rgba(168,85,247,.8)'; ctx.shadowBlur = 14;
+    ctx.drawImage(pkTex('pick'), -cs * .55, -cs * .55, cs * 1.1, cs * 1.1); ctx.restore();
+  }
+  // всплывающие иксы
+  PK.pops = PK.pops.filter((p) => p.life > 0);
+  ctx.textAlign = 'center'; ctx.font = `900 ${Math.round(cs * .36)}px -apple-system, system-ui, sans-serif`;
+  for (const p of PK.pops) {
+    p.y -= .6; p.life -= .016; ctx.globalAlpha = Math.min(1, p.life * 2);
+    const yy = p.y - PK.camY * cs; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(5,4,10,.9)'; ctx.strokeText(p.text, p.x, yy); ctx.fillStyle = p.c; ctx.fillText(p.text, p.x, yy);
+  }
+  ctx.globalAlpha = 1; ctx.restore();
+}
+requestAnimationFrame(pkFrame);
+
+// ── анимация партии ──
+const pkTween = (dur, fn, ease = (k) => k) => new Promise((res) => {
+  const t0 = performance.now();
+  const step = (t) => { const k = Math.min(1, ((t - t0) * PK.speed) / dur); fn(ease(k)); if (k < 1) requestAnimationFrame(step); else res(); };
+  requestAnimationFrame(step);
+});
+const easeIn = (k) => k * k, easeOut = (k) => 1 - (1 - k) * (1 - k);
+function pkBurst(c, y, kind, n = 14) {
+  const cs = PK.cs; const col = PK_COLORS[kind] || '#888'; const cols = [col, '#ffffff', PK_COLORS.stone];
+  const m = LOW_END ? Math.ceil(n / 2) : n;
+  for (let i = 0; i < m; i++) PK.parts.push({ x: (c + .5) * cs, y: (y + .5) * cs, vx: (Math.random() - .5) * 7, vy: -Math.random() * 6 - 1, s: 3 + Math.random() * 4, life: 1, c: cols[i % 3] });
+}
+function pkPop(c, y, v, col = '#6ee7b7') { PK.pops.push({ x: (c + .5) * PK.cs, y: (y + .2) * PK.cs, text: `+${(v / 100).toFixed(v % 100 ? (v % 10 ? 2 : 1) : 0)}x`, c: col, life: 1.4 }); }
+let pkWin = 0, pkAmountNow = 0, pkHpNow = 100, pkMaxHp = 100;
+function pkHud() {
+  $('#pkHp').textContent = `${Math.max(0, Math.round(pkHpNow))}/${pkMaxHp}`;
+  $('#pkHpFill').style.width = `${Math.max(0, (pkHpNow / pkMaxHp) * 100)}%`;
+  $('#pkHpBox').classList.toggle('low', pkHpNow / pkMaxHp <= .25 && pkHpNow > 0);
+  const el = $('#pkMult'), txt = `x${(pkWin / 100).toFixed(2)}`;
+  if (el.textContent !== txt) { el.textContent = txt; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
+  $('#pkStars').innerHTML = `${fmt((pkAmountNow * pkWin) / 100)} ${STAR}`;
+}
+async function pkPlay(r) {
+  const w = PK.world = buildWorld(r.events, (Math.random() * 2 ** 31) | 0);
+  pkWin = 0; pkAmountNow = r.amount; pkMaxHp = r.maxHp; pkHpNow = r.maxHp;
+  Object.assign(pick, { x: 3, y: -3, rot: -.5, show: true, crack: 0, target: null });
+  PK.camY = -3 - (PK.H / PK.cs) * .38; PK.parts = []; PK.pops = [];
+  pkHud();
+  for (const p of w.path) {
+    // вбок, затем вниз до клетки над блоком
+    if (pick.x !== p.c) { const x0 = pick.x; await pkTween(140, (k) => { pick.x = x0 + (p.c - x0) * k; }, easeOut); }
+    const yStart = pick.y, yEnd = p.y - 1;
+    if (yEnd > yStart) { const rot0 = pick.rot; await pkTween(110 + 85 * Math.sqrt(yEnd - yStart), (k) => { pick.y = yStart + (yEnd - yStart) * k; pick.rot = rot0 + k * 1.2; }, easeIn); }
+    pick.rot = -.4; pick.target = [p.c, p.y]; pick.crack = 0;
+    // удары
+    const hits = HARDC[p.k] || 1, hp0 = pkHpNow;
+    for (let h = 1; h <= hits; h++) {
+      await pkTween(70, (k) => { pick.rot = -.4 - k * .7; });
+      await pkTween(60, (k) => { pick.rot = -1.1 + k * 1.5; pick.y = yEnd + k * .12; });
+      pick.crack = h; pkHpNow = hp0 - (p.dmg * h) / hits; pkHud(); PK.shake = Math.max(PK.shake, 3);
+      pkBurst(p.c, p.y, p.k, 4); haptic.sel();
+      await pkTween(50, (k) => { pick.y = yEnd + .12 - k * .12; });
+    }
+    // блок сломан
+    pick.target = null; pick.crack = 0; w.grid.set(w.key(p.c, p.y), 'cave'); pkBurst(p.c, p.y, p.k, 16);
+    if (p.k === 'tnt') {
+      PK.shake = 16; haptic.heavy();
+      const st = $('#pkStage'); st.classList.remove('flash', 'shake'); void st.offsetWidth; st.classList.add('flash', 'shake');
+      for (let i = 0; i < 26; i++) PK.parts.push({ x: (p.c + .5) * PK.cs, y: (p.y + .5) * PK.cs, vx: (Math.random() - .5) * 14, vy: (Math.random() - .5) * 14, s: 4 + Math.random() * 5, life: 1, c: ['#fde68a', '#fb923c', '#ef4444', '#ffffff'][i % 4] });
+      for (const [cx, cy, k] of p.cells) { w.grid.set(w.key(cx, cy), 'cave'); pkBurst(cx, cy, k, 12); pkPop(cx, cy, PK_VALUES[k] || 0, '#fde68a'); pkWin += PK_VALUES[k] || 0; }
+      pkHud();
+    } else if (p.v > 0) {
+      pkPop(p.c, p.y, p.v, p.v >= 500 ? '#f0abfc' : '#6ee7b7'); pkWin += p.v; pkHud(); haptic.tap();
+      if (p.v >= 500) burst(...centerOf($('#pkStage')), { n: 40, power: 8 });
+    }
+    await pkTween(90, () => {});
+  }
+  // прочность кончилась — кирка ломается
+  pkHpNow = 0; pkHud();
+  for (let i = 0; i < 24; i++) PK.parts.push({ x: (pick.x + .5) * PK.cs, y: (pick.y + .5) * PK.cs, vx: (Math.random() - .5) * 9, vy: -Math.random() * 7, s: 3 + Math.random() * 4, life: 1, c: ['#c4b5fd', '#7c3aed', '#a16b36', '#ffffff'][i % 4] });
+  pick.show = false; haptic.err();
+  pkWin = Math.round(r.mult * 100); pkHud(); // финальное значение строго с сервера
+  await sleep(450 / PK.speed);
+}
+function pkShowResult(r) {
+  const box = $('#pkResult'), win = r.payout >= r.amount;
+  box.className = `pk-result ${win ? 'win' : 'lose'}`;
+  box.innerHTML = `<b>x${r.mult.toFixed(2)}</b><span>${r.payout > 0 ? `+${fmt(r.payout)}` : '0'} ${STAR}</span><small>${win ? 'Кирка отработала в плюс!' : 'Кирка сломалась'}</small>`;
+  box.hidden = false;
+  if (r.mult >= 2) burst(...centerOf($('#pkStage')), { n: r.mult >= 10 ? 160 : 90, power: r.mult >= 10 ? 13 : 10 });
+  r.mult >= 1 ? haptic.ok() : haptic.err();
+  PK.hist.unshift(r.mult); PK.hist.length = Math.min(PK.hist.length, 20);
+  $('#pkHistory').innerHTML = PK.hist.map((m, i) => `<span class="hchip ${hClass(m)} ${i === 0 ? 'new' : ''}">${m.toFixed(2)}x</span>`).join('');
+}
+const pkInput = $('#pkAmount');
+pkInput.addEventListener('blur', () => cleanInt(pkInput));
+$$('[data-pkstep]').forEach((b) => b.addEventListener('click', () => { haptic.sel(); pkInput.value = Math.max(0, (Number(pkInput.value) || 0) + Number(b.dataset.pkstep)); }));
+$$('[data-pkq]').forEach((b) => b.addEventListener('click', () => {
+  haptic.sel(); const v = Number(pkInput.value) || 0, q = b.dataset.pkq, bal = S.me?.balance || 0;
+  pkInput.value = q === 'half' ? Math.max(1, Math.floor(v / 2)) : q === 'x2' ? Math.min(bal, v * 2) : q === 'max' ? bal : Math.min(bal, v + Number(q));
+}));
+$('#pkSkip').addEventListener('click', () => { PK.speed = 8; haptic.tap(); $('#pkSkip').hidden = true; });
+$('#pkGo').addEventListener('click', async () => {
+  if (PK.playing || S.spinning) return;
+  const btn = $('#pkGo'); btn.disabled = true; PK.playing = true; S.spinning = true; S.heldBalance = null;
+  $('#pkResult').hidden = true;
+  try {
+    const r = await api('/api/pickaxe', { amount: Number(pkInput.value) || 0 });
+    if (S.me) { S.me.balance -= r.amount; tweenNum($('#meBalance'), S.me.balance, 400); } // пока летит — только ставка
+    $('#pkIdle').hidden = true; PK.speed = 1; $('#pkSkip').hidden = false; $('span', btn).textContent = 'Кирка копает…';
+    haptic.heavy();
+    await pkPlay(r);
+    setBalance(S.heldBalance ?? r.balance); S.heldBalance = null;
+    pkShowResult(r);
+  } catch (e) {
+    if (S.heldBalance != null) { setBalance(S.heldBalance); S.heldBalance = null; }
+    fail(e);
+  } finally {
+    PK.playing = false; S.spinning = false; btn.disabled = false; $('#pkSkip').hidden = true; $('span', btn).textContent = 'Бросить кирку';
+  }
+});
+function pkLegend() {
+  const rows = [...Object.entries(PK_VALUES).map(([k, v]) => [k, `+${v / 100}x`, '']), ['stone', '0x', 'zero'], ['tnt', 'взрыв', 'boom']];
+  const desc = { stone: 'тратит прочность', tnt: 'ломает соседние блоки' };
+  $('#pkLegend').innerHTML = rows.map(([k, val, cls]) => `<div class="pk-leg"><img src="${pkTex(k).toDataURL()}" alt=""><div><b>${PK_NAMES[k]}</b>${desc[k] ? `<small>${desc[k]}</small>` : ''}</div><span class="val ${cls}">${val}</span></div>`).join('');
+}
+function pkHeroArt() {
+  const c = $('#pkHero'); if (!c) return; const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+  const s = 40, ox = 24, oy = 30;
+  [['diamond', 1, 0], ['stone', 0, 1], ['emerald', 1, 1], ['gold', 2, 1], ['stone', 0, 2], ['tnt', 1, 2], ['ruby', 2, 2]].forEach(([k, x, y]) => g.drawImage(pkTex(k), ox + x * s, oy + y * s - 10, s, s));
+  g.save(); g.translate(ox + 96, oy + 6); g.rotate(-.5); g.drawImage(pkTex('pick'), -26, -26, 52, 52); g.restore();
+}
+pkLegend(); pkHeroArt();
+function renderPkFair() {
+  const t = S.cfg.pickaxe?.table; if (!t || !$('#frPkTbl')) return;
+  $('#frPkRtp').textContent = Math.round((1 - S.cfg.pickaxe.edge) * 1000) / 10;
+  const fmtP = (p) => (p >= 0.01 ? `${(p * 100).toFixed(1)}%` : p >= 0.0001 ? `${(p * 100).toFixed(2)}%` : `1 из ${fmt(1 / p)}`);
+  $('#frPkTbl').innerHTML = '<span class="h">Икс</span><span class="h">Шанс</span><span class="h">Икс</span><span class="h">Шанс</span>'
+    + t.map((r) => `<span class="r">x${r.x}</span><span>${fmtP(r.p)}</span>`).join('');
+}
+
 // ═══════════════ WebSocket ═══════════════
 function setOnline(n) { S.online = n; tweenNum($('#hcOnline'), n, 500); tweenNum($('#rkOnline'), n, 500); }
 let ws, wsTries = 0, wsEverOpen = false, wsTimer = 0;
@@ -1103,7 +1411,7 @@ async function renderLanding() {
       $('#s-home').appendChild(b);
     }
     const sp = tg?.initDataUnsafe?.start_param;
-    if (sp === 'rocket' || sp === 'upgrade') go(sp);
+    if (['rocket', 'upgrade', 'pickaxe', 'fair'].includes(sp)) go(sp);
   } catch (e) { fail(e); }
 })();
 
