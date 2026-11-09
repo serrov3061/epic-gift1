@@ -15,7 +15,9 @@ export function crashFromSeed(seed) {
   const c = Math.floor((100 * (1 - cfg.CRASH_EDGE)) / (1 - r)) / 100;
   // Взрывы ниже CRASH_MIN поднимаются ровно до CRASH_MIN. Забрать выигрыш можно только при m > CRASH_MIN,
   // поэтому для любой цели x > CRASH_MIN шанс P(краш > x) не меняется — преимущество казино сохраняется.
-  return Math.min(cfg.CRASH_MAX, Math.max(cfg.CRASH_MIN, c));
+  const out = Math.min(cfg.CRASH_MAX || 1000, Math.max(cfg.CRASH_MIN || 1, c));
+  if (!Number.isFinite(out)) { console.error('[crash] точка взрыва не число — проверь CRASH_* в переменных'); return 1; }
+  return out;
 }
 
 export class CrashGame extends EventEmitter {
@@ -77,7 +79,7 @@ export class CrashGame extends EventEmitter {
     if (!/^\d{1,9}$/.test(String(amount ?? ''))) throw new AppError('Неверная сумма');
     amount = Number(amount);
     auto = auto ? Math.floor(Number(auto) * 100) / 100 : null;
-    const autoMin = Math.round((cfg.CRASH_MIN + 0.01) * 100) / 100;
+    const autoMin = Math.round(((cfg.CRASH_MIN || 1) + 0.01) * 100) / 100;
     if (auto !== null && (!(auto >= autoMin) || auto > cfg.CRASH_MAX)) throw new AppError(`Автовывод от ${autoMin.toFixed(2)}x до ${cfg.CRASH_MAX}x`);
 
     if (amount < cfg.MIN_BET) throw new AppError(`Минимальная ставка ${cfg.MIN_BET} ⭐`);
@@ -104,7 +106,7 @@ export class CrashGame extends EventEmitter {
     if (!b || b.cashout) throw new AppError('Нет активной ставки');
     const m = multAt(Date.now() - this.startAt);
     if (m >= this.crash) throw new AppError('Ракета уже улетела');
-    if (m <= cfg.CRASH_MIN) throw new AppError(`Забрать можно после ${cfg.CRASH_MIN.toFixed(2)}x`);
+    if (m <= (cfg.CRASH_MIN || 1)) throw new AppError(`Забрать можно после ${(cfg.CRASH_MIN || 1).toFixed(2)}x`);
     return this.payout(userId, m);
   }
 

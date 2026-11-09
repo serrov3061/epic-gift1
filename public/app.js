@@ -371,7 +371,7 @@ function openWallet(tab = 'stars') {
       } else {
         api('/api/me').then((r) => { S.me = r.user; if ($('#wOut', body) && r.user.wagerLeft > 0 && !$('.wager-note', body)) $('.sub', body).insertAdjacentHTML('afterend', `<div class="wager-note">${ic('clock')}<div><b>Отыграйте ещё ${fmt(r.user.wagerLeft)} ⭐</b><small>Пополнения и бонусы нужно один раз прокрутить в ставках — так мы защищаемся от отмыва</small></div></div>`); }).catch(() => {});
         body.innerHTML = `
-          <p class="sub">Вывод на ваш аккаунт StaticGram · от ${fmt(S.cfg.minWithdraw)} ⭐</p>
+          <p class="sub">Вывод на ваш аккаунт StaticGram · от ${fmt(S.cfg.minWithdraw)} ⭐${S.cfg.withdrawDaily > 0 ? ` · до ${fmt(S.cfg.withdrawDaily)} ⭐ в сутки` : ''}</p>
           ${S.me?.wagerLeft > 0 ? `<div class="wager-note">${ic('clock')}<div><b>Отыграйте ещё ${fmt(S.me.wagerLeft)} ⭐</b><small>Пополнения и бонусы нужно один раз прокрутить в ставках — так мы защищаемся от отмыва</small></div></div>` : ''}
           <label class="amount-input">${STAR}<input id="wOut" type="number" inputmode="numeric" value="${S.cfg.minWithdraw}"></label>
           <div class="quick"><button id="wMax">Весь баланс · ${fmt(S.me?.balance || 0)}</button></div>
@@ -502,7 +502,7 @@ function renderBets() {
 const betInput = $('#betAmount');
 const cleanInt = (el) => { el.value = String(Math.max(0, Math.floor(Number(el.value) || 0))); };
 betInput.addEventListener('blur', () => cleanInt(betInput));
-$('#upAmount').addEventListener('blur', () => { cleanInt($('#upAmount')); renderUpgrade(); });
+$('#upAmount').addEventListener('blur', () => { const v = $('#upAmount').value; cleanInt($('#upAmount')); if ($('#upAmount').value !== v) renderUpgrade(); });
 $$('.round-btn').forEach((b) => b.addEventListener('click', () => { haptic.sel(); betInput.value = Math.max(0, (Number(betInput.value) || 0) + Number(b.dataset.step)); }));
 $$('.quick [data-q]').forEach((b) => b.addEventListener('click', () => {
   haptic.sel(); const v = Number(betInput.value) || 0, q = b.dataset.q, bal = S.me?.balance || 0;
@@ -529,7 +529,9 @@ function updateAction() {
   const b = myBet(); let text, cls = '';
   if (st.phase === 'betting') { if (b) { text = `Ставка ${fmt(b.value)} принята`; cls = 'wait'; } else text = 'Сделать ставку'; }
   else if (st.phase === 'flying') {
-    if (b && !b.cashout) { text = `Забрать ${fmt(b.value * multAt(sNow() - st.startAt))}`; cls = 'green'; }
+    const mNow = multAt(sNow() - st.startAt), mMin = st.crashMin || 1;
+    if (b && !b.cashout && mNow <= mMin) { text = `Забрать можно после ${mMin.toFixed(2)}x`; cls = 'wait'; }
+    else if (b && !b.cashout) { text = `Забрать ${fmt(b.value * mNow)}`; cls = 'green'; }
     else if (b) { text = `Выведено x${b.cashout.toFixed(2)} · +${fmt(b.payout)}`; cls = 'wait'; }
     else { text = 'Раунд идёт — ждите следующий'; cls = 'wait'; }
   } else text = 'Следующий раунд…', cls = 'wait';
@@ -659,7 +661,7 @@ $('#upTicks').innerHTML = Array.from({ length: 72 }, (_, i) => {
 const upInputValue = () => Number($('#upAmount').value) || 0;
 // та же формула, что на сервере (upgradeEdge в src/upgrade.js): для крупных выплат шанс ниже
 const upEdge = (input, target) => {
-  const c = S.cfg, base = c.upgradeEdge ?? .15;
+  const c = S.cfg, base = c.upgradeEdge ?? .10;
   if (!(input > 0) || !(target > input)) return base;
   const big = Math.min(c.bigMax ?? .25, .05 * Math.log2(1 + (target - input) / (c.bigStep ?? 20000)));
   const m = target / input;
@@ -677,7 +679,7 @@ let coreKey = '';
 function renderUpgrade(gridToo = true) {
   const input = upInputValue();
   tweenNum($('#upInputValue'), input, 400);
-  const maxC = S.cfg.maxChance ?? .75, minC = S.cfg.minChance ?? .01, ok = (c) => c >= minC && c <= maxC;
+  const maxC = S.cfg.maxChance ?? .80, minC = S.cfg.minChance ?? .01, ok = (c) => c >= minC && c <= maxC;
   if (gridToo) {
     const grid = $('#upTargets');
     if (S.upSeg === 'items') {
@@ -690,7 +692,7 @@ function renderUpgrade(gridToo = true) {
         : Array.from({ length: 6 }, () => '<div class="skel" style="aspect-ratio:.8"></div>').join('');
     } else {
       grid.innerHTML = (S.cfg.multipliers || []).map((mu, i) => {
-        const c = input > 0 ? chanceFor(input, input * mu) : (1 - (S.cfg.upgradeEdge ?? .15)) / mu;
+        const c = input > 0 ? chanceFor(input, input * mu) : (1 - (S.cfg.upgradeEdge ?? .10)) / mu;
         return `<button class="nft mult reveal ${S.upTarget?.type === 'mult' && S.upTarget.mult === mu ? 'sel' : ''} ${ok(c) && !overPayout(input * mu) ? '' : 'dim'}" style="--i:${i}" data-mult="${mu}">
           <b>x${mu}</b><small>${pct(c)} · ${STAR}${fmt(input * mu)}</small></button>`;
       }).join('');
@@ -748,7 +750,10 @@ $('#upGo').addEventListener('click', async () => {
   const ptr = $('#upPointer');
   ptr.style.transition = 'none'; ptr.style.transform = 'rotate(0deg)'; ptr.getBoundingClientRect();
   try {
+    S.heldBalance = null;
     const r = await api('/api/upgrade', { amount: Number($('#upAmount').value) || 0, target: S.upTarget });
+    // пока крутится — показываем только списание ставки, выигрыш раскрываем в конце
+    if (S.me) { S.me.balance -= r.inputValue; tweenNum($('#meBalance'), S.me.balance, 400); }
     haptic.heavy(); wheel.classList.add('spinning');
     $('#upArc').style.strokeDasharray = `${C * r.chance} ${C}`;
     $('#upChance').textContent = pct(r.chance);
@@ -761,13 +766,17 @@ $('#upGo').addEventListener('click', async () => {
     wheel.classList.remove('spinning'); wheel.classList.add(r.win ? 'win' : 'lose');
     $('#upSub').textContent = r.win ? 'Успех!' : 'Не повезло';
     if (r.win) { haptic.ok(); burst(...centerOf(wheel), { n: 140, power: 12 }); } else haptic.err();
-    setBalance(r.balance);
+    setBalance(S.heldBalance ?? r.balance); S.heldBalance = null;
     await sleep(700);
     showUpgradeResult(r);
     $('#upAmount').value = 0; S.upTarget = null; coreKey = '-';
     S.spinning = false;
     loadMe().catch(() => {}); loadShop();
-  } catch (e) { S.spinning = false; wheel.classList.remove('spinning'); fail(e); renderUpgrade(); }
+  } catch (e) {
+    S.spinning = false; wheel.classList.remove('spinning');
+    if (S.heldBalance != null) { setBalance(S.heldBalance); S.heldBalance = null; }
+    fail(e); renderUpgrade();
+  }
 });
 function showUpgradeResult(r) {
   const art = r.item
@@ -871,7 +880,7 @@ setInterval(tickTimer, 1000);
 
 
 // ═══════════════ ЧЕСТНОСТЬ ═══════════════
-const F = { loaded: false, rounds: [], edge: .12, salt: 'epic-gift-rocket', crashMax: 1000, open: new Set(), shown: new Set(), busy: false };
+const F = { loaded: false, rounds: [], edge: .05, salt: 'epic-gift-rocket', crashMax: 100, crashMin: 1, open: new Set(), shown: new Set(), busy: false };
 const hexOf = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 const utf8 = (t) => new TextEncoder().encode(t);
 const sha256Hex = async (t) => hexOf(await crypto.subtle.digest('SHA-256', utf8(t)));
@@ -880,7 +889,7 @@ async function crashOf(seed) {
   const key = await crypto.subtle.importKey('raw', utf8(seed), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const h = hexOf(await crypto.subtle.sign('HMAC', key, utf8(F.salt)));
   const r = parseInt(h.slice(0, 13), 16) / 2 ** 52;
-  return Math.min(F.crashMax, Math.max(1, Math.floor((100 * (1 - F.edge)) / (1 - r)) / 100));
+  return Math.min(F.crashMax, Math.max(F.crashMin || 1, Math.floor((100 * (1 - F.edge)) / (1 - r)) / 100));
 }
 const shortHash = (h = '') => (h.length > 22 ? `${h.slice(0, 12)}…${h.slice(-8)}` : h);
 const pctNum = (n) => (Number.isInteger(+n.toFixed(2)) ? String(Math.round(n)) : n.toFixed(1));
@@ -917,7 +926,7 @@ async function renderFairLive() {
 async function loadFair(silent) {
   try {
     const r = await api('/api/fair');
-    F.edge = r.edge; F.salt = r.salt; F.crashMax = r.crashMax; F.rounds = r.rounds; F.loaded = true;
+    F.edge = r.edge; F.salt = r.salt; F.crashMax = r.crashMax; F.crashMin = r.crashMin || 1; F.rounds = r.rounds; F.loaded = true;
     renderFair();
   } catch (e) { if (!silent) fail(e); }
 }
@@ -965,6 +974,8 @@ function renderFair() {
   if (S.cfg.maxBet) lim.push(`максимальная ставка — ${fmt(S.cfg.maxBet)} ⭐`);
   lim.push(S.cfg.maxPayout > 0 ? `максимальный выигрыш за одну игру — ${fmt(S.cfg.maxPayout)} ⭐` : 'потолка выигрыша нет');
   lim.push(`ракетка летит не выше x${fmt(F.crashMax)}`);
+  if (F.crashMin > 1) lim.push(`ракетка всегда долетает до x${F.crashMin.toFixed(2)}, забрать выигрыш можно после этого икса`);
+  if (S.cfg.withdrawDaily > 0) lim.push(`вывод — до ${fmt(S.cfg.withdrawDaily)} ⭐ в сутки`);
   $('#frLimits').textContent = lim.join(' · ').replace(/^./, (c) => c.toUpperCase()) + '.';
 }
 // раскрытие раундов и аккордеона
@@ -1035,7 +1046,7 @@ function connectWS() {
     let m; try { m = JSON.parse(e.data); } catch { return; }
     if (m.type === 'crash') onCrashState(m);
     else if (m.type === 'crash_delta') onCrashDelta(m);
-    else if (m.type === 'balance') setBalance(m.balance);
+    else if (m.type === 'balance') { if (S.spinning) S.heldBalance = m.balance; else setBalance(m.balance); }
     else if (m.type === 'inventory') { loadMe().catch(() => {}); island('Новый подарок в инвентаре', 'ok', 'gift'); }
     else if (m.type === 'online') setOnline(m.n);
     else if (m.type === 'live') { S.live.unshift(m.event); S.live.length = Math.min(S.live.length, 20); renderLive(); }
